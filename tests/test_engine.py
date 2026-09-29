@@ -167,6 +167,40 @@ def test_general_task_uses_general_client():
     assert eng.chat("merhaba nasılsın") == "GENEL"
 
 
+def test_reflect_fixes_broken_code():
+    from kuzgun.verify import check_python_syntax, extract_code_blocks
+
+    client = FakeModelClient(
+        [
+            AssistantMessage(text="```python\ndef f(:\n    return 1\n```", tool_calls=[]),
+            AssistantMessage(text="```python\ndef f():\n    return 1\n```", tool_calls=[]),
+        ]
+    )
+    eng = KuzgunEngine(
+        client=client,
+        coder_client=client,
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    out = eng.chat("Python'da bir f fonksiyonu yaz")
+    ok, _ = check_python_syntax(extract_code_blocks(out)[0])
+    assert ok  # yansıtma sonrası kod sözdizimsel geçerli
+
+
+def test_no_reflect_when_code_valid():
+    # Geçerli kodda ikinci (düzeltme) çağrısı yapılmamalı (aksi halde IndexError).
+    client = FakeModelClient([AssistantMessage(text="```python\nx = 1\n```", tool_calls=[])])
+    eng = KuzgunEngine(
+        client=client,
+        coder_client=client,
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    assert "x = 1" in eng.chat("python ile x'e 1 ata")
+
+
 def test_history_is_trimmed():
     eng = KuzgunEngine(
         client=FakeModelClient([AssistantMessage(text="x", tool_calls=[])] * 200),

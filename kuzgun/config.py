@@ -20,6 +20,7 @@ class Config:
     token: str = ""  # boşsa kimlik doğrulama kapalı (yalnız yerel kullanım için)
     allowed_hosts: str = "127.0.0.1,localhost"  # DNS-rebinding koruması (Host doğrulama)
     autoroute: bool = True  # açıkça zor işleri baştan Claude'a yönlendir
+    reflect: bool = True  # kod işlerinde yazılan kodu doğrula, hatalıysa düzelttir
 
 
 def load_config() -> Config:
@@ -37,4 +38,5 @@ def load_config() -> Config:
         token=os.environ.get("KUZGUN_TOKEN", d.token),
         allowed_hosts=os.environ.get("KUZGUN_ALLOWED_HOSTS", d.allowed_hosts),
         autoroute=os.environ.get("KUZGUN_AUTOROUTE", "1") not in ("0", "false", "False"),
+        reflect=os.environ.get("KUZGUN_REFLECT", "1") not in ("0", "false", "False"),
     )
