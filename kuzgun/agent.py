@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from kuzgun.models import AssistantMessage
+from kuzgun.permissions import is_allowed
 from kuzgun.tools import ToolRegistry
 
 
@@ -20,14 +21,23 @@ def _assistant_to_history(msg: AssistantMessage) -> dict:
     return entry
 
 
-def run_turn(client, messages: list[dict], registry: ToolRegistry, max_steps: int = 10) -> str:
+def run_turn(
+    client,
+    messages: list[dict],
+    registry: ToolRegistry,
+    mode: str = "normal",
+    confirm=None,
+    max_steps: int = 10,
+) -> str:
     for _ in range(max_steps):
         assistant = client.chat(messages, registry.schemas())
         messages.append(_assistant_to_history(assistant))
         if not assistant.tool_calls:
             return assistant.text or ""
         for tc in assistant.tool_calls:
-            result = registry.execute(tc.name, tc.arguments)
+            mutating = registry.is_mutating(tc.name)
+            allowed, reason = is_allowed(tc.name, tc.arguments, mutating, mode, confirm)
+            result = registry.execute(tc.name, tc.arguments) if allowed else reason
             messages.append(
                 {"role": "tool", "tool_call_id": tc.id, "content": result}
             )

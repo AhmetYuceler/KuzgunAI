@@ -57,3 +57,56 @@ def test_max_steps_guard():
     client = FakeModelClient([loop_msg] * 20)
     with pytest.raises(RuntimeError):
         run_turn(client, [{"role": "user", "content": "?"}], _registry_with_echo(), max_steps=3)
+
+
+def _spy_registry():
+    """Çağrılınca kaydeden, değişiklik yapan (mutating) bir araç."""
+    reg = ToolRegistry()
+    calls = []
+    schema = {
+        "type": "function",
+        "function": {
+            "name": "yaz",
+            "parameters": {"type": "object", "properties": {"x": {"type": "string"}}},
+        },
+    }
+    reg.register(schema, lambda x="": calls.append(x) or "yazildi", mutating=True)
+    return reg, calls
+
+
+def test_plan_mode_blocks_mutating_tool():
+    reg, calls = _spy_registry()
+    client = FakeModelClient([
+        AssistantMessage(text=None, tool_calls=[ToolCall("1", "yaz", {"x": "a"})]),
+        AssistantMessage(text="tamam", tool_calls=[]),
+    ])
+    messages = [{"role": "user", "content": "?"}]
+    out = run_turn(client, messages, reg, mode="plan")
+    assert out == "tamam"
+    assert calls == []  # araç ÇALIŞMAMALI
+    assert any(
+        "plan modu" in m.get("content", "").lower()
+        for m in messages
+        if m.get("role") == "tool"
+    )
+
+
+def test_normal_mode_mutating_runs_when_confirmed():
+    reg, calls = _spy_registry()
+    client = FakeModelClient([
+        AssistantMessage(text=None, tool_calls=[ToolCall("1", "yaz", {"x": "a"})]),
+        AssistantMessage(text="tamam", tool_calls=[]),
+    ])
+    run_turn(client, [{"role": "user", "content": "?"}], reg,
+             mode="normal", confirm=lambda n, a: True)
+    assert calls == ["a"]  # araç ÇALIŞTI
+
+
+def test_normal_mode_mutating_blocked_without_confirm():
+    reg, calls = _spy_registry()
+    client = FakeModelClient([
+        AssistantMessage(text=None, tool_calls=[ToolCall("1", "yaz", {"x": "a"})]),
+        AssistantMessage(text="tamam", tool_calls=[]),
+    ])
+    run_turn(client, [{"role": "user", "content": "?"}], reg, mode="normal", confirm=None)
+    assert calls == []
