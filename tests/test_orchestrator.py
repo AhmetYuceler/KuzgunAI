@@ -29,5 +29,6 @@ def test_plan_parses_json_subtasks():
 
 
 def test_plan_no_json_returns_empty():
-    client = FakeModelClient([AssistantMessage(text="düz metin", tool_calls=[])])
+    # C1: geçersiz çıktıda yeniden dener; hepsi başarısızsa [] döner (retries=2 → 3 deneme).
+    client = FakeModelClient([AssistantMessage(text="düz metin", tool_calls=[])] * 3)
     assert _plan_with_model("görev", client) == []

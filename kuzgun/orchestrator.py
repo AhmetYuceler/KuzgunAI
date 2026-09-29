@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-import re
+from kuzgun.structured import complete_json
 
 _PLAN_SYSTEM = (
     "Sen bir görev yöneticisisin. Verilen görevi 2-5 BAĞIMSIZ alt-göreve böl "
@@ -15,32 +14,23 @@ _SYNTH_SYSTEM = (
 )
 
 
-def _extract_json_array(text: str) -> list[str] | None:
-    m = re.search(r"\[.*\]", text or "", re.DOTALL)
-    if not m:
-        return None
-    try:
-        arr = json.loads(m.group(0))
-    except Exception:
-        return None
-    if isinstance(arr, list):
-        return [str(x) for x in arr]
-    return None
-
-
-def _plan_with_model(task: str, client) -> list[str]:
-    """Modeli 'yönetici' olarak kullanıp görevi alt-görevlere böler."""
-    msg = client.chat(
+def plan_with_model(task: str, client) -> list[str]:
+    """Modeli 'yönetici' olarak kullanıp görevi alt-görevlere böler (C1: yapılandırılmış
+    çıktı + yeniden deneme; serbest-metin ayrıştırmaya bağlı değil)."""
+    plan = complete_json(
+        client,
         [
             {"role": "system", "content": _PLAN_SYSTEM},
             {"role": "user", "content": task},
         ],
-        [],
+        retries=2,
+        default=[],
+        validate=lambda d: isinstance(d, list) and all(isinstance(x, str) for x in d),
     )
-    return _extract_json_array(msg.text or "") or []
+    return [str(x) for x in (plan or [])]
 
 
-def _synth_with_model(task: str, results: list[tuple[str, str]], client) -> str:
+def synth_with_model(task: str, results: list[tuple[str, str]], client) -> str:
     parts = "\n".join(f"- {st}:\n{res}" for st, res in results)
     msg = client.chat(
         [
@@ -62,3 +52,8 @@ def orchestrate(task: str, plan_fn, worker_fn, synth_fn) -> str:
     for st in subtasks:
         results.append((st, worker_fn(st)))
     return synth_fn(task, results)
+
+
+# Geriye dönük uyum: eski özel adlar public adların takma adı.
+_plan_with_model = plan_with_model
+_synth_with_model = synth_with_model
