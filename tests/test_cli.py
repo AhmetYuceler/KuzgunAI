@@ -226,3 +226,10 @@ def test_session_title_prefers_name_then_first_message():
     assert session_title({"name": "", "title": "benim en sevdigim renk mor"}) == "benim en sevdigim renk mor"
     assert session_title({"name": "", "title": "x" * 80}) == "x" * 47 + "..."
     assert session_title({}) == "Kuzgun"
+
+
+def test_command_help_covers_all_commands():
+    from kuzgun.cli import COMMAND_HELP, COMMANDS
+
+    assert set(COMMAND_HELP) == set(COMMANDS)
+    assert all(COMMAND_HELP[c] for c in COMMANDS)

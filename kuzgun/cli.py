@@ -14,6 +14,11 @@ from kuzgun.permissions import MODES
 from kuzgun.teacher import ask_claude
 
 
+_EDIT_KEYS_HELP = (
+    "Kısayollar: Ctrl+Backspace/Ctrl+Delete kelime sil · Ctrl+←/→ kelime atla · "
+    "Home/End · Ctrl+U/Ctrl+K satırı sil · ↑/↓ önceki girdiler · shift+tab mod · alt+v resim"
+)
+
 # Argümansız yazılırsa kullanım gösterilen komutlar (argümanlısı main() içinde işlenir).
 _NEEDS_ARG = {
     "/hatirla": "<şey>",
@@ -25,6 +30,22 @@ COMMANDS = (
     "/yardim", "/mod", "/plan", "/normal", "/otonom", "/claude", "/ajanlar",
     "/hatirla", "/notlar", "/gecmis", "/resume", "/rename", "/cikis",
 )
+# '/' menüsünde komutun yanında soluk görünen açıklamalar (Claude Code'daki gibi).
+COMMAND_HELP = {
+    "/yardim": "komutları listele",
+    "/mod": "mod değiştir: plan | normal | otonom",
+    "/plan": "plan moduna geç (değişiklik yapmaz); görev de verilebilir",
+    "/normal": "normal moda geç (değişiklikte onay sorar)",
+    "/otonom": "otonom moda geç (onaysız çalışır)",
+    "/claude": "uzmana (Claude) danış",
+    "/ajanlar": "görevi böl, alt-ajanlarla tek tek yap",
+    "/hatirla": "kalıcı not al (KUZGUN.md)",
+    "/notlar": "kalıcı notları göster",
+    "/gecmis": "bu oturumun son konuşmasını göster",
+    "/resume": "eski bir oturuma dön",
+    "/rename": "bu oturuma ad ver",
+    "/cikis": "Kuzgun'dan çık",
+}
 
 
 def handle_slash(line: str, state: dict) -> str | None:
@@ -42,7 +63,7 @@ def handle_slash(line: str, state: dict) -> str | None:
             "shift+tab de döndürür), /claude <soru> (uzmana danış), "
             "/ajanlar <görev> (çok adımlı işi böl-yap), /hatirla <şey>, /notlar, "
             "/gecmis, /resume [ad|no] (eski oturuma dön), /rename <ad> (oturuma ad ver), "
-            "/yardim, /cikis"
+            "/yardim, /cikis\n" + _EDIT_KEYS_HELP
         )
     if cmd == "/mod":
         if len(parts) < 2:
@@ -316,7 +337,23 @@ def main(argv=None) -> None:
     if ui.is_interactive():
         import asyncio
 
-        asyncio.run(ui.run_interactive(state, console, handle))
+        def _resume_choices():
+            # '/resume ' sonrası: ad (varsa) ya da numara; yanında ilk mesaj
+            return [
+                (m["name"] or str(i), m.get("title", ""))
+                for i, m in enumerate(archive.list(), 1)
+            ]
+
+        asyncio.run(
+            ui.run_interactive(
+                state,
+                console,
+                handle,
+                commands=COMMAND_HELP,
+                arg_choices={"/mod": lambda: list(MODES), "/resume": _resume_choices},
+                needs_arg=set(_NEEDS_ARG) | {"/mod", "/resume"},
+            )
+        )
     else:
         ui.run_plain(state, console, handle)
 

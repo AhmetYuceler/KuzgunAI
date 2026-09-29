@@ -45,6 +45,22 @@ _HARD_PATTERNS = (
     "yeniden yapılandır",
     "mimari kur",
     "çok dosya",
+    # Belge/sunum üretimi: yerel modelin aracı yok (docx/pdf/pptx), Claude yapar.
+    "word dosyası",
+    "word belgesi",
+    "word dökümanı",
+    "word dokümanı",
+    "docx",
+    "pdf oluştur",
+    "pdf yap",
+    "pdf hazırla",
+    "sunum hazırla",
+    "sunum yap",
+    "sunum oluştur",
+    "pptx",
+    "excel dosyası",
+    "excel tablosu",
+    "xlsx",
 )
 
 

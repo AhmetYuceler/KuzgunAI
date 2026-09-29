@@ -75,3 +75,11 @@ def test_sessions_dir_and_days(monkeypatch):
     assert c.sessions_dir == "data/sessions" and c.session_days == 30
     monkeypatch.setenv("KUZGUN_SESSION_DAYS", "7")
     assert load_config().session_days == 7
+
+
+def test_memory_min_score_default_and_env(monkeypatch):
+    assert load_config().memory_min_score == 0.70
+    monkeypatch.setenv("KUZGUN_MEMORY_MIN_SCORE", "0.5")
+    assert load_config().memory_min_score == 0.5
+    monkeypatch.setenv("KUZGUN_MEMORY_MIN_SCORE", "bozuk")
+    assert load_config().memory_min_score == 0.70

@@ -98,3 +98,15 @@ def test_is_compound_detects_multiple_questions():
     assert is_compound("hava nasıl. bir de şu dosyayı oku")
     assert not is_compound("bugün hava nasıl?")
     assert not is_compound("hava kaç derece, yağmur var mı?")  # tek soru, virgüllü
+
+
+def test_document_generation_routed_to_expert():
+    # Ekran görüntüsü: 'masaüstüne word dosyası oluştur' → 7B araçsız, yapamaz; Claude'a gitmeli
+    for msg in [
+        "bana bunla alakalı bi araştırma yapıp masaüstüne kısa özet halinde word dosyası oluşturur musun",
+        "şunu pdf yap",
+        "bir sunum hazırla",
+        "verileri excel dosyası olarak kaydet",
+    ]:
+        assert classify_complexity(msg)[0] == "zor", msg
+    assert classify_complexity("word kelimesinin anlamı ne?")[0] == "kolay"

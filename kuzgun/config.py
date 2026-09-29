@@ -29,8 +29,16 @@ class Config:
     images_dir: str = ""
     sessions_dir: str = "data/sessions"  # /resume arşivi (KUZGUN_SESSIONS_DIR)
     session_days: int = 30  # bu kadar günden eski oturumlar açılışta silinir
+    memory_min_score: float = 0.70  # hafıza (RAG) alaka eşiği; altı bağlama girmez
     model_timeout: int = 300  # Ollama sohbet isteği için saniye (takılırsa vazgeç)
     claude_timeout: int = 300  # /claude ve devretme için 'claude --print' süresi
+
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return default
 
 
 def _int_env(name: str, default: int) -> int:
@@ -65,6 +73,7 @@ def load_config() -> Config:
         images_dir=os.environ.get("KUZGUN_IMAGES_DIR", d.images_dir),
         sessions_dir=os.environ.get("KUZGUN_SESSIONS_DIR", d.sessions_dir),
         session_days=_int_env("KUZGUN_SESSION_DAYS", d.session_days),
+        memory_min_score=_float_env("KUZGUN_MEMORY_MIN_SCORE", d.memory_min_score),
         model_timeout=_int_env("KUZGUN_MODEL_TIMEOUT", d.model_timeout),
         claude_timeout=_int_env("KUZGUN_CLAUDE_TIMEOUT", d.claude_timeout),
     )

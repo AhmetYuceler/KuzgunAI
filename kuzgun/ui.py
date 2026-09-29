@@ -125,24 +125,115 @@ def print_note(console, text: str, style: str = "yellow") -> None:
     console.print()
 
 
+# ---- slash komut tamamlama (Claude Code'daki '/' menüsü gibi) --------------------
+
+
+class SlashCompleter:
+    """'/' ile başlayan girdide komutları (yanında soluk açıklama) önerir; ↑/↓ ile
+    gezilir, Tab tamamlar. Komuttan sonra boşluk gelince, varsa o komutun
+    argüman seçeneklerini (arg_choices[cmd]() → ['x'] ya da [('x', 'açıklama')]) önerir.
+
+    Argüman alan komutlar (`needs_arg`) tamamlanınca sonuna boşluk eklenir.
+    """
+
+    def __init__(self, commands: dict[str, str], arg_choices=None, needs_arg=None):
+        from prompt_toolkit.completion import Completer
+
+        self._commands = commands
+        self._arg_choices = arg_choices or {}
+        self._needs_arg = set(needs_arg) if needs_arg is not None else set(self._arg_choices)
+        # Completer arayüzü (prompt_toolkit soyut sınıfı) — isinstance için kaydet.
+        Completer.register(type(self))
+
+    def get_completions(self, document, complete_event):
+        from prompt_toolkit.completion import Completion
+
+        text = document.text_before_cursor
+        if not text.startswith("/"):
+            return
+        if " " not in text:  # komut adı yazılıyor
+            for cmd, desc in self._commands.items():
+                if cmd.startswith(text):
+                    suffix = " " if cmd in self._needs_arg or cmd in self._arg_choices else ""
+                    yield Completion(cmd + suffix, start_position=-len(text), display=cmd, display_meta=desc)
+            return
+        cmd, _, arg = text.partition(" ")
+        choices = self._arg_choices.get(cmd)
+        if choices is None:
+            return
+        for item in choices():
+            value, meta = (item, "") if isinstance(item, str) else item
+            if value.startswith(arg):
+                yield Completion(value, start_position=-len(arg), display_meta=meta)
+
+    async def get_completions_async(self, document, complete_event):
+        for c in self.get_completions(document, complete_event):
+            yield c
+
+
 # ---- prompt_toolkit oturumu ----------------------------------------------------
 
+# Düzenleme kısayolları (Claude Code'daki gibi; prompt_toolkit emacs varsayılanları):
+#   Ctrl+Backspace / Ctrl+W  önceki kelimeyi sil     Ctrl+Delete  sonraki kelimeyi sil
+#   Ctrl+←/→                 kelime kelime git       Home/End, Ctrl+A/E  satır başı/sonu
+#   Ctrl+U                   imleçten başa kadar sil Ctrl+K       imleçten sona kadar sil
+#   ↑/↓                      önceki girdiler         Ctrl+C       iptal/temizle/çık
+EDIT_KEYS_HELP = (
+    "Kısayollar: Ctrl+Backspace/Ctrl+Delete kelime sil · Ctrl+←/→ kelime atla · "
+    "Home/End · Ctrl+U/Ctrl+K satırı sil · ↑/↓ önceki girdiler · shift+tab mod · alt+v resim"
+)
 
-def make_session(state: dict, **session_kwargs):
+
+def _enable_ctrl_backspace() -> None:
+    """Windows konsolunda Ctrl+Backspace'i 'önceki kelimeyi sil' yapar.
+
+    Win32 girdi okuyucu Backspace'i 0x08, Ctrl+Backspace'i 0x7f olarak alır ama
+    ikisini de aynı tuşa (c-h) eşler; 0x7f'yi Ctrl+W'ye (unix-word-rubout)
+    yönlendiriyoruz. Yalnız Windows; diğer platformlarda 0x7f düz Backspace'tir.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        from prompt_toolkit.input.win32 import ConsoleInputReader
+        from prompt_toolkit.key_binding.key_processor import KeyPress
+        from prompt_toolkit.keys import Keys
+    except Exception:  # noqa: BLE001 — kozmetik; olmazsa Backspace yine çalışır
+        return
+    if getattr(ConsoleInputReader, "_kuzgun_ctrl_backspace", False):
+        return
+    orig = ConsoleInputReader._event_to_key_presses
+    ctrl_mask = ConsoleInputReader.LEFT_CTRL_PRESSED | ConsoleInputReader.RIGHT_CTRL_PRESSED
+    vk_back = 0x08
+
+    def patched(self, ev):
+        if ev.ControlKeyState & ctrl_mask and (
+            ev.VirtualKeyCode == vk_back or ev.uChar.UnicodeChar in ("\x08", "\x7f")
+        ):
+            return [KeyPress(Keys.ControlW, "")]  # Ctrl+Backspace → önceki kelimeyi sil
+        return orig(self, ev)
+
+    ConsoleInputReader._event_to_key_presses = patched
+    ConsoleInputReader._kuzgun_ctrl_backspace = True
+
+
+def make_session(state: dict, commands=None, arg_choices=None, needs_arg=None, **session_kwargs):
     """Durum satırlı prompt_toolkit oturumu.
 
     shift+tab modu döndürür; alt+v pano resmini ekler (state['attachments']);
-    Ctrl+C çalışan işi iptal eder. session_kwargs (input=/output=) test içindir.
+    Ctrl+C çalışan işi iptal eder; `commands` verilirse '/' menüsü açılır.
+    session_kwargs (input=/output=) test içindir.
     """
     from prompt_toolkit import PromptSession
     from prompt_toolkit.application import get_app
     from prompt_toolkit.formatted_text import HTML
     from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.shortcuts import CompleteStyle
     from prompt_toolkit.styles import Style
 
     state.setdefault("attachments", [])
     state.setdefault("queue", [])
     state.setdefault("busy", None)
+    _enable_ctrl_backspace()
     kb = KeyBindings()
 
     @kb.add("s-tab")
@@ -207,14 +298,24 @@ def make_session(state: dict, **session_kwargs):
             "dim": "ansibrightblack",
             "prompt": "ansimagenta bold",
             "placeholder": "ansibrightblack italic",
+            # '/' menüsü: koyu zemin, seçili satır vurgulu, açıklama soluk
+            "completion-menu": "bg:#1c1c1c #d0d0d0",
+            "completion-menu.completion": "bg:#1c1c1c #d0d0d0",
+            "completion-menu.completion.current": "bg:#5f5faf #ffffff bold",
+            "completion-menu.meta.completion": "bg:#1c1c1c #808080",
+            "completion-menu.meta.completion.current": "bg:#5f5faf #e0e0e0",
         }
     )
+    completer = SlashCompleter(commands, arg_choices, needs_arg) if commands else None
     return PromptSession(
         message=[("class:prompt", "❯ ")],
         placeholder=[("class:placeholder", _HINT)],
         bottom_toolbar=toolbar,
         key_bindings=kb,
         style=style,
+        completer=completer,
+        complete_while_typing=True,  # '/' yazar yazmaz menü açılsın
+        complete_style=CompleteStyle.COLUMN,  # tek sütun: komut + açıklama
         erase_when_done=True,  # gönderilen satırı biz basarız (print_user)
         refresh_interval=0.1,  # dönen simge
         **session_kwargs,
@@ -253,7 +354,7 @@ def confirm_in_terminal(fn):
     return asyncio.run_coroutine_threadsafe(_run(), loop).result()
 
 
-async def run_interactive(state: dict, console, handle, session_kwargs=None) -> None:
+async def run_interactive(state: dict, console, handle, session_kwargs=None, **session_opts) -> None:
     """Sabit girdi kutusu + kuyruk döngüsü.
 
     handle(text, images, cancel_event) her mesaj için ayrı iş parçacığında
@@ -264,7 +365,7 @@ async def run_interactive(state: dict, console, handle, session_kwargs=None) -> 
     from prompt_toolkit.patch_stdout import patch_stdout
 
     _LOOP = asyncio.get_running_loop()
-    session = make_session(state, **(session_kwargs or {}))
+    session = make_session(state, **session_opts, **(session_kwargs or {}))
     worker: asyncio.Task | None = None
 
     def start(item):

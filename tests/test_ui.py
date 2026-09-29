@@ -171,3 +171,114 @@ def test_set_title_strips_control_chars():
     out = io.StringIO()
     set_title("a\x07b\x1bc\nd", file=out)
     assert out.getvalue() == "\x1b]0;abcd\x07"
+
+
+def _completions(completer, text):
+    from prompt_toolkit.completion import CompleteEvent
+    from prompt_toolkit.document import Document
+
+    return list(completer.get_completions(Document(text, len(text)), CompleteEvent()))
+
+
+def test_slash_completer_lists_commands_with_descriptions():
+    from kuzgun.ui import SlashCompleter
+
+    c = SlashCompleter(
+        {"/resume": "eski oturuma dön", "/rename": "oturuma ad ver", "/cikis": "çık"},
+        needs_arg={"/resume", "/rename"},
+    )
+    got = _completions(c, "/re")
+    assert [x.text for x in got] == ["/resume ", "/rename "]  # sıra korunur, öneki eşleşir
+    assert "eski oturuma dön" in str(got[0].display_meta_text)
+    assert got[0].start_position == -3  # '/re' yerine yazılır
+    assert [x.text for x in _completions(c, "/")][-1] == "/cikis"  # argümansız komut: boşluk yok
+
+
+def test_slash_completer_no_completion_for_plain_text():
+    from kuzgun.ui import SlashCompleter
+
+    assert _completions(SlashCompleter({"/cikis": "çık"}), "merhaba") == []
+
+
+def test_slash_completer_completes_arguments_from_choices():
+    from kuzgun.ui import SlashCompleter
+
+    c = SlashCompleter(
+        {"/mod": "mod değiştir", "/resume": "oturuma dön"},
+        arg_choices={
+            "/mod": lambda: ["plan", "normal", "otonom"],
+            "/resume": lambda: [("renk-testi", "benim en sevdigim renk"), ("2", "başka")],
+        },
+    )
+    assert [x.text for x in _completions(c, "/mod n")] == ["normal"]
+    got = _completions(c, "/resume ")
+    assert [x.text for x in got] == ["renk-testi", "2"]
+    assert "benim en sevdigim" in str(got[0].display_meta_text)
+
+
+def test_session_has_completer_when_commands_given():
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from kuzgun.ui import make_session
+
+    with create_pipe_input() as inp:
+        s = make_session({"mode": "normal"}, commands={"/cikis": "çık"}, input=inp, output=DummyOutput())
+        assert s.completer is not None
+        assert bool(s.complete_while_typing) is True
+
+
+def _prompt_with_keys(keys: str) -> str:
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from kuzgun.ui import make_session
+
+    with create_pipe_input() as inp:
+        session = make_session({"mode": "normal"}, input=inp, output=DummyOutput())
+        inp.send_text(keys)
+        return session.prompt()
+
+
+def test_ctrl_w_deletes_previous_word():
+    assert _prompt_with_keys("merhaba dunya\x17\r") == "merhaba "
+
+
+def test_ctrl_delete_deletes_next_word_and_ctrl_arrows_jump_words():
+    # Home, Ctrl+Delete → 'abc' silinir; sonra Ctrl+→ ile 'def' sonuna gidip 'X' yaz
+    assert _prompt_with_keys("abc def\x1b[H\x1b[3;5~\x1b[1;5CX\r") == " defX"
+
+
+def test_ctrl_u_and_ctrl_k_kill_line_parts():
+    assert _prompt_with_keys("silinecek kalan\x1b[1;5D\x15\r") == "kalan"  # Ctrl+← sonra Ctrl+U
+    assert _prompt_with_keys("kalan silinecek\x1b[1;5D\x0b\r") == "kalan "  # Ctrl+← sonra Ctrl+K
+
+
+def test_ctrl_backspace_becomes_word_delete_on_windows():
+    import sys
+
+    import pytest
+
+    from kuzgun.ui import _enable_ctrl_backspace
+
+    if sys.platform != "win32":
+        pytest.skip("Win32 konsol girdisi")
+    from prompt_toolkit.input.win32 import ConsoleInputReader
+    from prompt_toolkit.keys import Keys
+    from prompt_toolkit.win32_types import KEY_EVENT_RECORD
+
+    _enable_ctrl_backspace()
+    _enable_ctrl_backspace()  # iki kez çağrılınca üst üste sarmalamaz
+
+    def ev(char, vk, ctrl):
+        e = KEY_EVENT_RECORD()
+        e.KeyDown = 1
+        e.VirtualKeyCode = vk
+        e.ControlKeyState = ConsoleInputReader.LEFT_CTRL_PRESSED if ctrl else 0
+        e.uChar.UnicodeChar = char
+        return e
+
+    reader = ConsoleInputReader.__new__(ConsoleInputReader)
+    assert [k.key for k in reader._event_to_key_presses(ev("", 0x08, ctrl=True))] == [Keys.ControlW]
+    assert [k.key for k in reader._event_to_key_presses(ev("", 0x08, ctrl=False))] == [Keys.ControlH]
+    assert [k.key for k in reader._event_to_key_presses(ev("a", 0x41, ctrl=False))] == ["a"]

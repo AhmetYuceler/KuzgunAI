@@ -424,3 +424,19 @@ def test_chat_with_images_two_stage_describe_then_answer_with_tools(tmp_path):
     assert eng.chat("dizi aslında bir marvel dizisi, hangisi?") == "Evet, Ironheart (2025)."
     assert not seen
     assert any("morluk" in m["content"] for m in eng.messages if m["role"] == "system")
+
+
+def test_inject_memory_skips_low_similarity(monkeypatch):
+    """Ekran görüntüsü: 'word dosyası oluştur' isteğine 'en sevdiğim renk mor' kaydı
+    bağlam olarak girip 7B'yi saptırdı. Alaka eşiğinin altındaki kayıtlar girmez."""
+    from kuzgun.engine import inject_memory
+
+    class Mem:
+        def search(self, q, e, k=3):
+            return [{"score": 0.62, "user": "en sevdigim renk mor", "assistant": "tamam"}]
+
+    msgs = []
+    inject_memory(msgs, Mem(), None, "word dosyası oluştur", min_score=0.70)
+    assert msgs == []
+    inject_memory(msgs, Mem(), None, "word dosyası oluştur", min_score=0.50)
+    assert len(msgs) == 1 and "mor" in msgs[0]["content"]

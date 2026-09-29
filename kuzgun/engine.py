@@ -104,8 +104,23 @@ def build_memory(db_path: str = "data/memory.db") -> Memory:
     return Memory(db_path)
 
 
-def inject_memory(messages: list[dict], memory: Memory, embedder, user_text: str) -> None:
-    """Kullanıcı mesajından önce ilgili geçmişi 'system' notu olarak ekler."""
+def inject_memory(
+    messages: list[dict], memory: Memory, embedder, user_text: str, min_score: float = 0.0
+) -> None:
+    """Kullanıcı mesajından önce ilgili geçmişi 'system' notu olarak ekler.
+
+    `min_score`: kosinüs alaka eşiği. nomic-embed'de alakasız kayıtlar ~0.6,
+    alakalılar ~0.8 çıkıyor; eşik olmadan her soruya rastgele geçmiş giriyor ve
+    7B saptırılıyordu ('word dosyası oluştur' → 'en sevdiğin renk mor')."""
+    if min_score > 0:
+        hits = [h for h in memory.search(user_text, embedder) if h["score"] >= min_score]
+        if not hits:
+            return
+        lines = ["[Geçmişten ilgili notlar — daha önce şunları konuştuk:]"]
+        for h in hits:
+            lines.append(f"- Sen: {h['user']}\n  Kuzgun: {h['assistant']}")
+        messages.append({"role": "system", "content": "\n".join(lines)})
+        return
     ctx = recall_context(memory, user_text, embedder)
     if ctx:
         messages.append({"role": "system", "content": ctx})
@@ -385,7 +400,13 @@ class KuzgunEngine:
         routed = self.autoroute and classify_complexity(message)[0] == "zor"
         if not routed:
             try:
-                inject_memory(messages, self.memory, self.embedder, message)
+                inject_memory(
+                    messages,
+                    self.memory,
+                    self.embedder,
+                    message,
+                    min_score=self.config.memory_min_score,
+                )
             except Exception as exc:  # noqa: BLE001
                 print(f"[hafıza-uyarı] geçmiş çağrılamadı: {exc}", file=sys.stderr)
         messages.append({"role": "user", "content": message})
