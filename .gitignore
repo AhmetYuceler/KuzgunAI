@@ -5,3 +5,4 @@ data/
 .pytest_cache/
 .superpowers/
 *.egg-info/
+benchmark_raporu.md
