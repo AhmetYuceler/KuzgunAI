@@ -51,3 +51,17 @@ class Memory:
 
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+
+
+def recall_context(memory: Memory, query: str, embedder, k: int = 3) -> str:
+    """İlgili geçmiş konuşmaları modele bağlam olarak verilecek metne çevirir.
+
+    Hafızada ilgili kayıt yoksa boş string döner.
+    """
+    hits = memory.search(query, embedder, k)
+    if not hits:
+        return ""
+    lines = ["[Geçmişten ilgili notlar — daha önce şunları konuştuk:]"]
+    for h in hits:
+        lines.append(f"- Sen: {h['user']}\n  Kuzgun: {h['assistant']}")
+    return "\n".join(lines)

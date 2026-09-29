@@ -1,5 +1,18 @@
 from kuzgun.embeddings import FakeEmbedder
-from kuzgun.memory import Memory
+from kuzgun.memory import Memory, recall_context
+
+
+def test_recall_empty_returns_empty_string():
+    assert recall_context(Memory(":memory:"), "soru", FakeEmbedder()) == ""
+
+
+def test_recall_includes_past_exchange():
+    m = Memory(":memory:")
+    e = FakeEmbedder()
+    m.add("python nedir", "python bir dildir", e)
+    out = recall_context(m, "python hakkinda bilgi", e, k=1)
+    assert "python nedir" in out
+    assert "python bir dildir" in out
 
 
 def test_empty_search_returns_empty():
