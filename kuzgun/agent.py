@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 
@@ -23,6 +24,29 @@ def _clip(text: str, limit: int = MAX_TOOL_CHARS) -> str:
     tail = text[-limit // 4 :]
     atlanan = len(text) - len(head) - len(tail)
     return f"{head}\n... [{atlanan} karakter kırpıldı] ...\n{tail}"
+
+
+def _render_result(text: str, out_dir: str | None = None, limit: int = MAX_TOOL_CHARS) -> str:
+    """Araç çıktısını bağlama hazırlar (C3). Limitten kısaysa aynen; uzunsa:
+    - out_dir verildiyse TAM çıktı dosyaya yazılır, bağlama önizleme + dosya yolu girer
+      (7B gerekirse read_file ile tamamını okur — veri kaybolmaz);
+    - out_dir yoksa baş+son kırpılır (_clip)."""
+    if len(text) <= limit:
+        return text
+    if out_dir:
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+            path = os.path.join(out_dir, f"cikti-{uuid.uuid4().hex[:8]}.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            preview = text[: limit // 2]
+            return (
+                f"{preview}\n... [çıktı uzun ({len(text)} karakter). TAM çıktı dosyada: "
+                f"{path} — gerekirse read_file ile oku] ..."
+            )
+        except Exception as exc:  # noqa: BLE001 — dosyaya yazılamazsa kırpmaya düş
+            log.warning("araç çıktısı dosyaya yazılamadı: %s", exc)
+    return _clip(text, limit)
 
 
 def _first_json_object(text: str) -> str | None:
@@ -148,6 +172,7 @@ def run_turn(
     max_steps: int = 10,
     escalate=None,
     wrapup: bool = False,
+    out_dir: str | None = None,
 ) -> str:
     """Ajan döngüsü. `escalate` verilirse model döngüye girer / araçlar üst üste hata
     verir / max_steps aşılırsa uzmana (Claude) devreder. `wrapup=True` ise max_steps
@@ -214,7 +239,8 @@ def run_turn(
                 step_error = True
                 log.warning("araç hatası id=%s name=%s: %s", turn_id, tc.name, result[:200])
             messages.append(
-                {"role": "tool", "tool_call_id": tc.id, "content": _clip(str(result))}
+                {"role": "tool", "tool_call_id": tc.id,
+                 "content": _render_result(str(result), out_dir)}
             )
         err_streak = err_streak + 1 if step_error else 0
         # Devir tetikleyicileri: döngü ya da üst üste araç hatası.

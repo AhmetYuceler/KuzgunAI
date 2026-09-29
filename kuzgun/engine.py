@@ -371,6 +371,7 @@ class KuzgunEngine:
             reply = run_turn(
                 active, messages, self.registry, mode=mode, confirm=cb, escalate=esc,
                 max_steps=self.config.max_steps, wrapup=True,  # C2: bütçe bitince zarif kapanış
+                out_dir=self.config.out_dir,  # C3: büyük çıktı dosyaya
             )
             if self.reflect and is_code:
                 reply = self._reflect_code(messages, reply, active, mode, cb, esc)

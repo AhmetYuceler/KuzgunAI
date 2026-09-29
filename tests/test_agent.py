@@ -142,6 +142,32 @@ def test_legit_error_output_does_not_escalate():
     assert escalated == []
 
 
+def test_large_tool_output_spilled_to_file(tmp_path):
+    # C3: out_dir verilince büyük çıktı DOSYAYA yazılır; bağlama önizleme + yol girer
+    # (7B tam çıktıyı read_file ile okuyabilir, veri kaybolmaz).
+    from kuzgun.agent import MAX_TOOL_CHARS
+
+    big = "SATIR\n" * (MAX_TOOL_CHARS)  # limitten çok büyük
+    reg = ToolRegistry()
+    reg.register(
+        {"type": "function", "function": {"name": "buyuk",
+         "parameters": {"type": "object", "properties": {}}}},
+        lambda: big,
+    )
+    client = FakeModelClient([
+        AssistantMessage(text=None, tool_calls=[ToolCall("1", "buyuk", {})]),
+        AssistantMessage(text="ok", tool_calls=[]),
+    ])
+    messages = [{"role": "user", "content": "?"}]
+    run_turn(client, messages, reg, out_dir=str(tmp_path))
+    tool_msg = next(m for m in messages if m.get("role") == "tool")
+    assert len(tool_msg["content"]) < len(big)           # bağlamda önizleme
+    assert ".txt" in tool_msg["content"]                  # dosya yolu geçiyor
+    import glob
+    files = glob.glob(str(tmp_path / "*.txt"))
+    assert files and open(files[0], encoding="utf-8").read() == big  # tam çıktı diskte
+
+
 def test_large_tool_output_is_clipped_in_history():
     # B6: dev araç çıktısı 7B'nin küçük bağlamını doldurmasın; geçmişe kırpılmış girer.
     from kuzgun.agent import MAX_TOOL_CHARS

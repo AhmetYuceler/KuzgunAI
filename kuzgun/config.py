@@ -48,6 +48,7 @@ class Config:
     mcp_config_path: str = "mcp_servers.json"  # MCP sunucu tanımları
     # C4: genel model düşerse denenecek yedek modeller (virgülle). Boş = yedek yok.
     fallback_models: str = ""
+    out_dir: str = "data/out"  # C3: büyük araç çıktılarının tam hâli buraya yazılır
 
 
 def _float_env(name: str, default: float) -> float:
@@ -113,4 +114,5 @@ def load_config() -> Config:
         request_timeout=_int_env("KUZGUN_REQUEST_TIMEOUT", d.model_timeout),
         mcp_config_path=os.environ.get("KUZGUN_MCP_CONFIG", d.mcp_config_path),
         fallback_models=os.environ.get("KUZGUN_FALLBACK_MODELS", d.fallback_models),
+        out_dir=_resolve(os.environ.get("KUZGUN_OUT_DIR", d.out_dir), home),
     )
