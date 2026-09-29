@@ -19,6 +19,7 @@ class Config:
     # Güvenlik: sunucu uzağa açılırsa (host != 127.0.0.1) bir token ayarla.
     token: str = ""  # boşsa kimlik doğrulama kapalı (yalnız yerel kullanım için)
     allowed_hosts: str = "127.0.0.1,localhost"  # DNS-rebinding koruması (Host doğrulama)
+    mode: str = "normal"  # başlangıç modu: plan | normal | otonom
     autoroute: bool = True  # açıkça zor işleri baştan Claude'a yönlendir
     reflect: bool = True  # kod işlerinde yazılan kodu doğrula, hatalıysa düzelttir
 
@@ -26,7 +27,11 @@ class Config:
 def load_config() -> Config:
     """Ortam değişkenlerinden (KUZGUN_*) ayarları okur, yoksa varsayılanı kullanır."""
     d = Config()
+    mode = os.environ.get("KUZGUN_MODE", d.mode)
+    if mode not in ("plan", "normal", "otonom"):
+        mode = d.mode
     return Config(
+        mode=mode,
         model=os.environ.get("KUZGUN_MODEL", d.model),
         coder_model=os.environ.get("KUZGUN_CODER_MODEL", d.coder_model),
         embed_model=os.environ.get("KUZGUN_EMBED_MODEL", d.embed_model),

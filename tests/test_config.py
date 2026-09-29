@@ -22,6 +22,18 @@ def test_defaults(monkeypatch):
     assert c.port == 8000
 
 
+def test_mode_default_and_env(monkeypatch):
+    monkeypatch.delenv("KUZGUN_MODE", raising=False)
+    assert load_config().mode == "normal"
+    monkeypatch.setenv("KUZGUN_MODE", "otonom")
+    assert load_config().mode == "otonom"
+
+
+def test_mode_invalid_falls_back_to_normal(monkeypatch):
+    monkeypatch.setenv("KUZGUN_MODE", "gecersiz")
+    assert load_config().mode == "normal"
+
+
 def test_reads_env(monkeypatch):
     monkeypatch.setenv("KUZGUN_MODEL", "llama3.1:8b")
     monkeypatch.setenv("KUZGUN_PORT", "9000")

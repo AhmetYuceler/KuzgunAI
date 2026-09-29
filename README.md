@@ -56,6 +56,7 @@ kuzgun-client http://SUNUCU_ADRESI:8000
 |---|---|---|
 | `KUZGUN_MODEL` | `qwen2.5:7b-instruct` | Yerel genel model |
 | `KUZGUN_CODER_MODEL` | `qwen2.5-coder:7b-instruct` | Kod işlerine yönlenen model |
+| `KUZGUN_MODE` | `normal` | Başlangıç modu: `plan`/`normal`/`otonom`. `otonom` = sormadan yapar |
 | `KUZGUN_AUTOROUTE` | `1` | Açıkça zor işleri (react/proje-kur…) baştan Claude'a yönlendir |
 | `KUZGUN_REFLECT` | `1` | Yazılan kodu doğrula, sözdizimi hatalıysa modele düzelttir |
 | `KUZGUN_EMBED_MODEL` | `nomic-embed-text` | Embedding modeli |

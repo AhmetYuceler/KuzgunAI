@@ -62,7 +62,7 @@ def main() -> None:
 
     console = Console()
     engine = KuzgunEngine(confirm=_confirm)
-    state = {"mode": "normal", "quit": False}
+    state = {"mode": engine.config.mode, "quit": False}  # başlangıç modu (KUZGUN_MODE)
     console.print(
         Panel.fit(
             "[bold]🦅 Kuzgun[/] hazır — kişisel yerel yapay zekâ ajanın\n"
