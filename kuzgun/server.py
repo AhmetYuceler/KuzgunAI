@@ -29,7 +29,10 @@ def create_app(engine: KuzgunEngine | None = None) -> FastAPI:
 def main() -> None:  # kuzgun-server giriş noktası
     import uvicorn
 
-    uvicorn.run(create_app(), host="127.0.0.1", port=8000)
+    from kuzgun.config import load_config
+
+    cfg = load_config()
+    uvicorn.run(create_app(), host=cfg.host, port=cfg.port)
 
 
 if __name__ == "__main__":

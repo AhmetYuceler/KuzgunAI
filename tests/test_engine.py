@@ -19,6 +19,13 @@ def test_chat_direct_answer():
     assert eng.chat("selam") == "merhaba"
 
 
+def test_engine_uses_config_db_path(monkeypatch, tmp_path):
+    monkeypatch.setenv("KUZGUN_DB", str(tmp_path / "x.db"))
+    eng = KuzgunEngine(client=FakeModelClient([]), embedder=FakeEmbedder())
+    assert eng.config.db_path == str(tmp_path / "x.db")
+    assert eng.memory.count() == 0  # config yolundaki gerçek dosya
+
+
 def test_chat_saves_to_memory():
     eng = _engine([AssistantMessage(text="cevap", tool_calls=[])])
     eng.chat("soru")

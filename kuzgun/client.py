@@ -32,7 +32,9 @@ def remote_chat(
 def main() -> None:  # kuzgun-client giriş noktası: ince terminal istemcisi
     import sys
 
-    base = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
+    from kuzgun.config import load_config
+
+    base = sys.argv[1] if len(sys.argv) > 1 else load_config().engine_url
     print(f"Kuzgun istemcisi -> {base}  (/cikis ile çık)")
     while True:
         try:
