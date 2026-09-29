@@ -75,6 +75,33 @@ def test_sessions_are_isolated():
     assert not any("s2 ozel mesaj" in m.get("content", "") for m in h1)
 
 
+def _echo_registry():
+    reg = ToolRegistry()
+    schema = {
+        "type": "function",
+        "function": {
+            "name": "echo",
+            "parameters": {"type": "object", "properties": {"text": {"type": "string"}}},
+        },
+    }
+    reg.register(schema, lambda text="": f"ARAC:{text}")
+    return reg
+
+
+def test_engine_escalates_when_stuck_and_learns():
+    loop = AssistantMessage(text=None, tool_calls=[ToolCall("1", "echo", {"text": "x"})])
+    eng = KuzgunEngine(
+        client=FakeModelClient([loop] * 20),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=_echo_registry(),
+        escalate=lambda q: "CLAUDE CEVABI",
+    )
+    out = eng.chat("zor soru")
+    assert out == "CLAUDE CEVABI"
+    assert eng.memory.count() == 1  # devredilen cevap hafızaya yazıldı (öğrenme)
+
+
 def test_history_is_trimmed():
     eng = KuzgunEngine(
         client=FakeModelClient([AssistantMessage(text="x", tool_calls=[])] * 200),

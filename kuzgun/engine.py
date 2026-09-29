@@ -8,6 +8,7 @@ from kuzgun.config import Config, load_config
 from kuzgun.embeddings import OllamaEmbedder
 from kuzgun.memory import Memory, recall_context
 from kuzgun.models import OllamaClient
+from kuzgun.teacher import ask_claude
 from kuzgun.tools import ToolRegistry
 from kuzgun.tools.read_file import read_file, READ_FILE_SCHEMA
 from kuzgun.tools.write_file import write_file, WRITE_FILE_SCHEMA
@@ -71,11 +72,14 @@ class KuzgunEngine:
         system_prompt: str = SYSTEM_PROMPT,
         config: Config | None = None,
         confirm=None,
+        escalate=None,
     ):
         cfg = config if config is not None else load_config()
         self.config = cfg
         self.system_prompt = system_prompt
         self.confirm = confirm
+        # Takılınca çağrılan devretme. None ise varsayılan: Claude'a danış.
+        self._escalate = escalate
         self.client = (
             client
             if client is not None
@@ -94,6 +98,16 @@ class KuzgunEngine:
 
     def _new_history(self) -> list[dict]:
         return [{"role": "system", "content": self.system_prompt}]
+
+    def _do_escalate(self, question: str) -> str:
+        """Varsayılan devretme: yerel model takıldı, danışman Claude'a sor."""
+        prompt = (
+            "Yerel bir yapay zekâ modeli bu soruda takıldı ve sana devretti. "
+            "Kullanıcının sorusu:\n\n"
+            f"{question}\n\n"
+            "Lütfen doğrudan, doğru ve yardımcı bir cevap ver (Türkçe)."
+        )
+        return ask_claude(prompt)
 
     def history(self, session_id: str | None = None) -> list[dict]:
         if session_id is None:
@@ -125,7 +139,10 @@ class KuzgunEngine:
         except Exception as exc:  # noqa: BLE001
             print(f"[hafıza-uyarı] geçmiş çağrılamadı: {exc}", file=sys.stderr)
         messages.append({"role": "user", "content": message})
-        reply = run_turn(self.client, messages, self.registry, mode=mode, confirm=cb)
+        esc = self._escalate if self._escalate is not None else self._do_escalate
+        reply = run_turn(
+            self.client, messages, self.registry, mode=mode, confirm=cb, escalate=esc
+        )
         if reply and not reply.startswith("Error:"):  # hataları "öğrenme"
             try:
                 self.memory.add(message, reply, self.embedder)
