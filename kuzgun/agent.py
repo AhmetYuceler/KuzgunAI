@@ -173,6 +173,7 @@ def run_turn(
     escalate=None,
     wrapup: bool = False,
     out_dir: str | None = None,
+    rules=(),
 ) -> str:
     """Ajan döngüsü. `escalate` verilirse model döngüye girer / araçlar üst üste hata
     verir / max_steps aşılırsa uzmana (Claude) devreder. `wrapup=True` ise max_steps
@@ -227,7 +228,7 @@ def run_turn(
         step_error = False
         for tc in assistant.tool_calls:
             mutating = registry.is_mutating(tc.name)
-            allowed, reason = is_allowed(tc.name, tc.arguments, mutating, mode, confirm)
+            allowed, reason = is_allowed(tc.name, tc.arguments, mutating, mode, confirm, rules=rules)
             if allowed:
                 with timed(log, "araç", id=turn_id, name=tc.name):
                     result = registry.execute(tc.name, tc.arguments)

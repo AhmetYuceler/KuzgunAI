@@ -18,6 +18,7 @@ from kuzgun.logging_setup import get_logger
 from kuzgun.memory import Memory, recall_context
 from kuzgun.notebook import load_notes
 from kuzgun.orchestrator import _plan_with_model, _synth_with_model, orchestrate
+from kuzgun.permissions import parse_rules
 from kuzgun.router import (
     classify_complexity,
     detect_media_intent,
@@ -131,6 +132,7 @@ class KuzgunEngine:
         self.autoroute = cfg.autoroute
         self.reflect = cfg.reflect
         self.max_history = cfg.max_history  # bağlam kırpma sınırı (B2/B6)
+        self._rules = parse_rules(cfg.permission_rules)  # C5: izin kuralları
         # Takılınca çağrılan devretme. None ise varsayılan: Claude'a danış.
         self._escalate = escalate
         # Somut kurulum bootstrap fabrikalarında (B3); test/sunucu bağımlılık enjekte eder.
@@ -372,6 +374,7 @@ class KuzgunEngine:
                 active, messages, self.registry, mode=mode, confirm=cb, escalate=esc,
                 max_steps=self.config.max_steps, wrapup=True,  # C2: bütçe bitince zarif kapanış
                 out_dir=self.config.out_dir,  # C3: büyük çıktı dosyaya
+                rules=self._rules,  # C5: izin kuralları
             )
             if self.reflect and is_code:
                 reply = self._reflect_code(messages, reply, active, mode, cb, esc)
