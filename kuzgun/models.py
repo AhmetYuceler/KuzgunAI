@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+
+
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: dict
+
+
+@dataclass
+class AssistantMessage:
+    text: str | None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+
+
+class FakeModelClient:
+    """Testler için: önceden yazılmış mesajları sırayla döndürür."""
+
+    def __init__(self, scripted: list[AssistantMessage]):
+        self._scripted = list(scripted)
+        self._i = 0
+
+    def chat(self, messages, tools) -> AssistantMessage:
+        msg = self._scripted[self._i]
+        self._i += 1
+        return msg
+
+
+class OllamaClient:
+    """Ollama'nın OpenAI-uyumlu API'sine bağlanır."""
+
+    def __init__(
+        self,
+        model: str = "qwen2.5:7b-instruct",
+        base_url: str = "http://localhost:11434/v1",
+    ):
+        from openai import OpenAI
+
+        self._client = OpenAI(base_url=base_url, api_key="ollama")
+        self._model = model
+
+    def chat(self, messages, tools) -> AssistantMessage:
+        resp = self._client.chat.completions.create(
+            model=self._model,
+            messages=messages,
+            tools=tools or None,
+            temperature=0.2,
+        )
+        m = resp.choices[0].message
+        tool_calls = []
+        for tc in (m.tool_calls or []):
+            args = tc.function.arguments or "{}"
+            tool_calls.append(
+                ToolCall(id=tc.id, name=tc.function.name, arguments=json.loads(args))
+            )
+        return AssistantMessage(text=m.content, tool_calls=tool_calls)
