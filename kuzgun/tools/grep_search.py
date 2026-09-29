@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from kuzgun.tools._paths import is_ignored
+
 GREP_SCHEMA = {
     "type": "function",
     "function": {
@@ -32,7 +34,7 @@ def grep_search(pattern: str, root: str = ".", glob: str = "**/*") -> str:
         return f"Error: geçersiz regex: {exc}"
     results = []
     for path in Path(root).glob(glob):
-        if not path.is_file():
+        if not path.is_file() or is_ignored(path):
             continue
         try:
             for i, line in enumerate(

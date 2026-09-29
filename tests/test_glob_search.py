@@ -15,5 +15,15 @@ def test_no_match_returns_message(tmp_path):
     assert "eşleşme" in out.lower() or "yok" in out.lower()
 
 
+def test_ignores_vendor_dirs(tmp_path):
+    (tmp_path / "a.py").write_text("x", encoding="utf-8")
+    venv = tmp_path / ".venv"
+    venv.mkdir()
+    (venv / "b.py").write_text("y", encoding="utf-8")
+    out = glob_search("**/*.py", root=str(tmp_path))
+    assert "a.py" in out
+    assert ".venv" not in out
+
+
 def test_schema_name():
     assert GLOB_SCHEMA["function"]["name"] == "glob_search"

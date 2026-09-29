@@ -14,5 +14,15 @@ def test_invalid_regex_returns_error(tmp_path):
     assert out.startswith("Error:")
 
 
+def test_ignores_vendor_dirs(tmp_path):
+    (tmp_path / "kod.py").write_text("hedef burada", encoding="utf-8")
+    venv = tmp_path / ".venv" / "lib"
+    venv.mkdir(parents=True)
+    (venv / "paket.py").write_text("hedef burada", encoding="utf-8")
+    out = grep_search("hedef", root=str(tmp_path))
+    assert "kod.py" in out
+    assert ".venv" not in out
+
+
 def test_schema_name():
     assert GREP_SCHEMA["function"]["name"] == "grep_search"
