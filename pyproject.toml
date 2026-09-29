@@ -10,6 +10,7 @@ dependencies = [
     "uvicorn>=0.29",
     "rich>=13",
     "prompt_toolkit>=3",
+    "pillow>=10",
 ]
 
 [project.optional-dependencies]

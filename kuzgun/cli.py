@@ -85,21 +85,38 @@ def run_guarded(fn, *args, **kwargs) -> str:
 
 
 def _confirm(name: str, arguments: dict) -> bool:
-    print(f"\n[onay] Kuzgun '{name}' çalıştırmak istiyor: {arguments}")
-    ans = input("İzin veriyor musun? (e/h) ").strip().lower()
-    return ans in ("e", "evet", "y", "yes")
+    """Normal modda değişiklik yapan araç için onay. Etkileşimli kutu açıkken
+    prompt geçici askıya alınır (ui.confirm_in_terminal), yoksa düz input()."""
+    from kuzgun import ui
+
+    def ask() -> bool:
+        print(f"\n[onay] Kuzgun '{name}' çalıştırmak istiyor: {arguments}")
+        ans = input("İzin veriyor musun? (e/h) ").strip().lower()
+        return ans in ("e", "evet", "y", "yes")
+
+    return ui.confirm_in_terminal(ask)
 
 
 def main() -> None:
     from rich.console import Console
-    from rich.markdown import Markdown
     from rich.panel import Panel
 
     from kuzgun import ui
 
+    import atexit
+
+    from kuzgun import vision
+
     console = Console()
     engine = KuzgunEngine(confirm=_confirm)
-    state = {"mode": engine.config.mode, "quit": False}  # başlangıç modu (KUZGUN_MODE)
+    # alt+v resimleri: kalıcı klasör verilmediyse oturumluk geçici klasör, çıkışta
+    # (/cikis, Ctrl+C, Ctrl+D) silinir; eski oturumlardan kalanlar süpürülür.
+    images_dir = engine.config.images_dir
+    if not images_dir:
+        vision.sweep_stale()
+        images_dir = vision.new_session_dir()
+        atexit.register(vision.cleanup_session_dir, images_dir)
+    state = {"mode": engine.config.mode, "quit": False, "images_dir": images_dir}
     console.print()
     console.print(
         ui.render_header(
@@ -107,72 +124,75 @@ def main() -> None:
         )
     )
     console.print()
-    session = ui.make_session(state) if ui.is_interactive() else None
 
-    def _sor(user: str) -> None:
-        """Bir kullanıcı mesajını modele iletir ve cevabı basar."""
-        console.print("[dim]düşünüyor... (Ctrl+C iptal)[/]")
-        cevap = run_guarded(engine.chat, user, mode=state["mode"])
-        console.print("[bold green]kuzgun>[/]")
-        console.print(Markdown(cevap))
+    def _sor(user: str, images: list[str], cancel) -> None:
+        """Bir kullanıcı mesajını modele iletir; iptal edilmediyse cevabı basar."""
+        cevap = run_guarded(engine.chat, user, mode=state["mode"], images=images or None)
+        if cancel.is_set():
+            return
+        ui.print_reply(console, cevap)
 
-    while True:
-        try:
-            user = ui.read_input(state, console, session)
-        except (EOFError, KeyboardInterrupt):
-            break
-        if not user:
-            continue
+    def handle(user: str, images: list[str], cancel) -> None:
+        """Tek bir girdiyi (slash komutu ya da mesaj) işler ve çıktısını basar.
+        Etkileşimli kutuda ayrı iş parçacığında çalışır; kutu altta kalır."""
         if user == "/gecmis":
             console.print(Panel(format_history(engine.messages), title="Geçmiş", border_style="dim"))
-            continue
+            return
         if user == "/notlar":
             from kuzgun.notebook import load_notes
 
             notlar = load_notes(engine.config.notes_path) or "Henüz kalıcı not yok."
             console.print(Panel(notlar, title="Kalıcı Notlar (KUZGUN.md)", border_style="dim"))
-            continue
+            return
         if user.startswith("/hatirla "):
             from kuzgun.notebook import load_notes
             from kuzgun.tools.remember import remember
 
             sonuc = remember(user[len("/hatirla ") :].strip(), _path=engine.config.notes_path)
             engine.notes = load_notes(engine.config.notes_path)  # sonraki turda bağlama girer
-            console.print(f"[yellow]{sonuc}[/]")
-            continue
+            ui.print_note(console, sonuc)
+            return
         if user.startswith("/ajanlar "):
             gorev = user[len("/ajanlar ") :].strip()
-            console.print("[dim]ajanlar çalışıyor: görev bölünüyor ve tek tek yapılıyor... (Ctrl+C iptal)[/]")
+            state["busy"] = "Ajanlar çalışıyor: görev bölünüyor…"
             cevap = run_guarded(engine.run_agents, gorev, mode=state["mode"], confirm=_confirm)
-            console.print("[bold green]ajanlar>[/]")
-            console.print(Markdown(cevap))
-            continue
+            if not cancel.is_set():
+                ui.print_reply(console, cevap, who="ajanlar")
+            return
         if user.startswith("/claude "):
             soru = user[len("/claude ") :].strip()
             # Son konuşmayı da gönder: 'üstteki hataları düzelt' gibi sorular anlaşılsın.
             baglam = format_history(engine.messages, n=6)
             if baglam == "Geçmiş boş.":
                 baglam = ""
-            with console.status("[dim]Claude'a danışılıyor... (Ctrl+C iptal)[/]"):
-                cevap = run_guarded(ask_claude, soru, context=baglam)
-            console.print("[bold magenta]claude>[/]")
-            console.print(Markdown(cevap))
+            state["busy"] = "Claude'a danışılıyor…"
+            cevap = run_guarded(ask_claude, soru, context=baglam)
+            if cancel.is_set():
+                return
+            ui.print_reply(console, cevap, who="claude")
             if cevap and not cevap.startswith(("Error:", "[")):
                 try:
                     engine.memory.add(soru, cevap, engine.embedder)
                 except Exception:
                     pass
-            continue
+            return
         slash = handle_slash(user, state)
         if slash is not None:
-            console.print(f"[yellow]{slash}[/]")
+            ui.print_note(console, slash)
             if state["quit"]:
-                break
+                return
             pending = state.pop("pending", None)
             if pending:  # '/plan <görev>' → mod değişti, şimdi görevi işle
-                _sor(pending)
-            continue
-        _sor(user)
+                _sor(pending, images, cancel)
+            return
+        _sor(user, images, cancel)
+
+    if ui.is_interactive():
+        import asyncio
+
+        asyncio.run(ui.run_interactive(state, console, handle))
+    else:
+        ui.run_plain(state, console, handle)
 
 
 if __name__ == "__main__":

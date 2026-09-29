@@ -1,3 +1,4 @@
+import os
 from rich.console import Console
 
 from kuzgun.ui import (
@@ -81,3 +82,72 @@ def test_session_shift_tab_cycles_mode_and_returns_line():
         assert session.prompt() == "merhaba"
     assert state["mode"] == "otonom"
     assert "otonom" in str(session.bottom_toolbar())  # durum satırı yeni modu gösterir
+
+
+def test_alt_v_attaches_clipboard_image(tmp_path):
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from kuzgun.ui import make_session
+
+    state = {"mode": "normal", "grab": lambda: str(tmp_path / "pano.png")}
+    with create_pipe_input() as inp:
+        session = make_session(state, input=inp, output=DummyOutput())
+        inp.send_text("\x1bv")  # alt+v
+        inp.send_text("bu ne\r")
+        line = session.prompt()
+    assert state["attachments"] == [str(tmp_path / "pano.png")]
+    assert "[resim 1]" in line and "bu ne" in line
+
+
+def test_interactive_loop_queues_messages_while_busy():
+    import asyncio
+    import time
+
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+    from rich.console import Console
+
+    from kuzgun.ui import run_interactive
+
+    handled = []
+
+    def handle(text, images, cancel):
+        time.sleep(0.15)  # meşgulken ikinci mesaj gelir → sıraya girmeli
+        handled.append(text)
+
+    state = {"mode": "normal"}
+    console = Console(file=open(os.devnull, "w", encoding="utf-8"), force_terminal=False)
+    from prompt_toolkit.application import create_app_session
+
+    with create_pipe_input() as inp, create_app_session(input=inp, output=DummyOutput()):
+        inp.send_text("birinci\r")
+        inp.send_text("ikinci\r")
+        inp.close()  # EOF → döngü biter, süren iş beklenir
+        asyncio.run(run_interactive(state, console, handle))
+    assert handled == ["birinci", "ikinci"]
+
+
+def test_interactive_loop_ends_when_handle_sets_quit():
+    import asyncio
+
+    from prompt_toolkit.application import create_app_session
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+    from rich.console import Console
+
+    from kuzgun.ui import run_interactive
+
+    handled = []
+
+    def handle(text, images, cancel):
+        handled.append(text)
+        state["quit"] = True  # /cikis gibi
+
+    state = {"mode": "normal"}
+    console = Console(file=open(os.devnull, "w", encoding="utf-8"), force_terminal=False)
+    with create_pipe_input() as inp, create_app_session(input=inp, output=DummyOutput()):
+        inp.send_text("/cikis\r")
+        # EOF gönderilmiyor: döngü quit ile kendiliğinden bitmeli (asılı kalmamalı)
+        asyncio.run(asyncio.wait_for(run_interactive(state, console, handle), timeout=5))
+    assert handled == ["/cikis"]

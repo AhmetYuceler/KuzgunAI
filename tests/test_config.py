@@ -54,3 +54,17 @@ def test_claude_timeout_env(monkeypatch):
     assert load_config().claude_timeout == 300
     monkeypatch.setenv("KUZGUN_CLAUDE_TIMEOUT", "600")
     assert load_config().claude_timeout == 600
+
+
+def test_vision_model_and_images_dir_defaults(monkeypatch):
+    c = load_config()
+    assert c.vision_model == "qwen2.5vl:7b"
+    assert c.images_dir == ""  # boş → oturumluk geçici klasör
+    monkeypatch.setenv("KUZGUN_VISION_MODEL", "llava:7b")
+    assert load_config().vision_model == "llava:7b"
+
+
+def test_images_dir_default_empty_means_session_temp(monkeypatch):
+    assert load_config().images_dir == ""  # boş → oturumluk geçici klasör, çıkışta silinir
+    monkeypatch.setenv("KUZGUN_IMAGES_DIR", "C:/kalici")
+    assert load_config().images_dir == "C:/kalici"

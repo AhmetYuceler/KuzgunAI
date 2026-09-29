@@ -375,3 +375,37 @@ def test_engine_compound_weather_message_still_asks_model(monkeypatch):
     assert out == "4 ve Ankara"
     # hava durumu modele bağlam olarak verildi
     assert any(m["role"] == "system" and "Kayseri" in m["content"] for m in eng.messages)
+
+
+def test_chat_with_images_uses_vision_client_and_keeps_text_history(tmp_path):
+    img = tmp_path / "ekran.png"
+    img.write_bytes(b"\x89PNG")
+    seen = {}
+
+    class VisionClient:
+        def chat(self, messages, tools):
+            seen["messages"] = messages
+            seen["tools"] = tools
+            return AssistantMessage(text="Bir terminal ekranı", tool_calls=[])
+
+    eng = KuzgunEngine(
+        client=FakeModelClient([]),  # metin modeli çağrılmamalı
+        vision_client=VisionClient(),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    out = eng.chat("bu resimde ne var?", images=[str(img)])
+    assert out == "Bir terminal ekranı"
+    assert not seen["tools"]  # görsel modele araç verilmez
+    from kuzgun.engine import VISION_PROMPT
+
+    assert seen["messages"][0] == {"role": "system", "content": VISION_PROMPT}  # sade prompt
+    user = seen["messages"][-1]
+    assert user["role"] == "user" and isinstance(user["content"], list)
+    assert user["content"][1]["type"] == "image_url"
+    # Geçmişte base64 değil, metin + dosya yolu tutulur
+    hist_user = [m for m in eng.messages if m["role"] == "user"][-1]
+    assert isinstance(hist_user["content"], str)
+    assert "ekran.png" in hist_user["content"]
+    assert eng.memory.count() == 1

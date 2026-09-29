@@ -23,6 +23,10 @@ class Config:
     mode: str = "normal"  # başlangıç modu: plan | normal | otonom
     autoroute: bool = True  # açıkça zor işleri baştan Claude'a yönlendir
     reflect: bool = True  # kod işlerinde yazılan kodu doğrula, hatalıysa düzelttir
+    vision_model: str = "qwen2.5vl:7b"  # resimli mesajlar bu modele gider
+    # alt+v pano resimleri: boş → %TEMP%/kuzgun/images/<oturum>, çıkışta silinir;
+    # KUZGUN_IMAGES_DIR verilirse kalıcı klasör (silinmez).
+    images_dir: str = ""
     model_timeout: int = 300  # Ollama sohbet isteği için saniye (takılırsa vazgeç)
     claude_timeout: int = 300  # /claude ve devretme için 'claude --print' süresi
 
@@ -55,6 +59,8 @@ def load_config() -> Config:
         allowed_hosts=os.environ.get("KUZGUN_ALLOWED_HOSTS", d.allowed_hosts),
         autoroute=os.environ.get("KUZGUN_AUTOROUTE", "1") not in ("0", "false", "False"),
         reflect=os.environ.get("KUZGUN_REFLECT", "1") not in ("0", "false", "False"),
+        vision_model=os.environ.get("KUZGUN_VISION_MODEL", d.vision_model),
+        images_dir=os.environ.get("KUZGUN_IMAGES_DIR", d.images_dir),
         model_timeout=_int_env("KUZGUN_MODEL_TIMEOUT", d.model_timeout),
         claude_timeout=_int_env("KUZGUN_CLAUDE_TIMEOUT", d.claude_timeout),
     )
