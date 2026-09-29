@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 
 _PROTOCOL_VERSION = "2024-11-05"
+
+log = logging.getLogger("kuzgun.mcp")
 
 
 class StdioTransport:
@@ -88,11 +91,11 @@ class MCPClient:
         return "\n".join(parts) if parts else json.dumps(result, ensure_ascii=False)
 
 
-def _mcp_to_openai_schema(tool: dict) -> dict:
+def _mcp_to_openai_schema(tool: dict, registered_name: str) -> dict:
     return {
         "type": "function",
         "function": {
-            "name": tool["name"],
+            "name": registered_name,
             "description": tool.get("description", ""),
             "parameters": tool.get("inputSchema")
             or {"type": "object", "properties": {}},
@@ -100,17 +103,22 @@ def _mcp_to_openai_schema(tool: dict) -> dict:
     }
 
 
-def register_mcp_tools(registry, client: MCPClient, read_only=()) -> list[str]:
+def register_mcp_tools(registry, client: MCPClient, read_only=(), namespace: str = "") -> list[str]:
     """MCP sunucusunun araçlarını ToolRegistry'ye kaydeder. Kaydedilen adları döner.
 
-    GÜVENLİK: MCP araçları varsayılan olarak DEĞİŞİKLİK YAPAN (mutating=True) sayılır
-    → mod/onay kapısına tabidir. Yalnızca `read_only` listesindekiler okuyan sayılır.
-    Böylece config yazarı unutursa bile yıkıcı bir araç sessizce çalışmaz (fail-safe).
+    GÜVENLİK:
+    - MCP araçları varsayılan olarak DEĞİŞİKLİK YAPAN (mutating=True) sayılır →
+      mod/onay kapısına tabidir. Yalnızca `read_only` listesindekiler okuyan sayılır
+      (config yazarı unutursa bile yıkıcı araç sessizce çalışmaz — fail-safe).
+    - `namespace` verilirse araç adı `<namespace>__<arac>` olur; böylece bir MCP aracı
+      yerleşik bir aracı (read_file gibi) EZEMEZ (bug #3). `read_only` çıplak araç
+      adıyla eşleşir.
     """
     read_only = set(read_only)
     names = []
     for tool in client.list_tools():
-        name = tool["name"]
+        bare = tool["name"]
+        reg_name = f"{namespace}__{bare}" if namespace else bare
 
         def make_fn(tool_name):
             def fn(**kwargs):
@@ -119,11 +127,11 @@ def register_mcp_tools(registry, client: MCPClient, read_only=()) -> list[str]:
             return fn
 
         registry.register(
-            _mcp_to_openai_schema(tool),
-            make_fn(name),
-            mutating=(name not in read_only),
+            _mcp_to_openai_schema(tool, reg_name),
+            make_fn(bare),
+            mutating=(bare not in read_only),
         )
-        names.append(name)
+        names.append(reg_name)
     return names
 
 
@@ -138,18 +146,27 @@ def load_mcp_servers(registry, config_path: str = "mcp_servers.json") -> list[st
         return []
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        log.warning("MCP config okunamadı (%s): %s", config_path, exc)
         return []
     registered: list[str] = []
     for srv in data.get("servers", []):
+        name = srv.get("name", "")
         try:
             transport = StdioTransport(srv["command"])
             transport.start()
             client = MCPClient(transport)
             client.initialize()
             registered.extend(
-                register_mcp_tools(registry, client, read_only=srv.get("read_only", []))
+                register_mcp_tools(
+                    registry,
+                    client,
+                    read_only=srv.get("read_only", []),
+                    namespace=name,
+                )
             )
-        except Exception:
-            continue  # bir sunucu bozuksa diğerlerine devam et
+        except Exception as exc:
+            # bir sunucu bozuksa diğerlerine devam et — ama sessizce yutma, logla.
+            log.warning("MCP sunucusu '%s' başlatılamadı: %s", name or "?", exc)
+            continue
     return registered
