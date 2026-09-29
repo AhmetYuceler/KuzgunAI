@@ -100,8 +100,14 @@ def _mcp_to_openai_schema(tool: dict) -> dict:
     }
 
 
-def register_mcp_tools(registry, client: MCPClient, mutating_names=()) -> list[str]:
-    """MCP sunucusunun araçlarını ToolRegistry'ye kaydeder. Kaydedilen adları döner."""
+def register_mcp_tools(registry, client: MCPClient, read_only=()) -> list[str]:
+    """MCP sunucusunun araçlarını ToolRegistry'ye kaydeder. Kaydedilen adları döner.
+
+    GÜVENLİK: MCP araçları varsayılan olarak DEĞİŞİKLİK YAPAN (mutating=True) sayılır
+    → mod/onay kapısına tabidir. Yalnızca `read_only` listesindekiler okuyan sayılır.
+    Böylece config yazarı unutursa bile yıkıcı bir araç sessizce çalışmaz (fail-safe).
+    """
+    read_only = set(read_only)
     names = []
     for tool in client.list_tools():
         name = tool["name"]
@@ -113,7 +119,9 @@ def register_mcp_tools(registry, client: MCPClient, mutating_names=()) -> list[s
             return fn
 
         registry.register(
-            _mcp_to_openai_schema(tool), make_fn(name), mutating=(name in mutating_names)
+            _mcp_to_openai_schema(tool),
+            make_fn(name),
+            mutating=(name not in read_only),
         )
         names.append(name)
     return names
@@ -140,7 +148,7 @@ def load_mcp_servers(registry, config_path: str = "mcp_servers.json") -> list[st
             client = MCPClient(transport)
             client.initialize()
             registered.extend(
-                register_mcp_tools(registry, client, mutating_names=srv.get("mutating", []))
+                register_mcp_tools(registry, client, read_only=srv.get("read_only", []))
             )
         except Exception:
             continue  # bir sunucu bozuksa diğerlerine devam et

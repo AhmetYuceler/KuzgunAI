@@ -66,6 +66,20 @@ def test_register_mcp_tools_into_registry():
     assert "hava" in names
     assert "hava" in [s["function"]["name"] for s in reg.schemas()]
     assert reg.execute("hava", {}) == "güneşli"  # kayıtlı araç MCP'yi çağırıyor
+    assert reg.is_mutating("hava") is True  # GÜVENLİK: varsayılan gated
+
+
+def test_mcp_read_only_override():
+    t = FakeTransport(
+        {
+            "tools/list": {
+                "tools": [{"name": "oku", "inputSchema": {"type": "object", "properties": {}}}]
+            }
+        }
+    )
+    reg = ToolRegistry()
+    register_mcp_tools(reg, MCPClient(t), read_only=["oku"])
+    assert reg.is_mutating("oku") is False  # read_only -> okuyan
 
 
 def test_load_mcp_no_config_returns_empty(tmp_path):

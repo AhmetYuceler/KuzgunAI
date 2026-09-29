@@ -1,15 +1,15 @@
 {
-  "_aciklama": "Bu dosyayı 'mcp_servers.json' olarak kopyalayıp düzenle. Kuzgun başlarken buradaki MCP sunucularının araçlarını otomatik ekler. 'mutating' listesi, onay/mod kapısına tabi (değişiklik yapan) araçların adlarıdır.",
+  "_aciklama": "Bu dosyayı 'mcp_servers.json' olarak kopyalayıp düzenle. Kuzgun başlarken buradaki MCP sunucularının araçlarını otomatik ekler. GÜVENLİK: MCP araçları varsayılan olarak DEĞİŞİKLİK YAPAN sayılır (mod/onay kapısına tabi); yalnızca zararsız (okuyan) araçların adlarını 'read_only' listesine yaz. UYARI: 'command' burada gerçek komut çalıştırır — yalnızca güvendiğin sunucuları ekle.",
   "servers": [
     {
       "name": "filesystem",
       "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "C:\\Users\\Ahmet Yüceler\\Desktop"],
-      "mutating": ["write_file", "edit_file", "create_directory", "move_file"]
+      "read_only": ["read_file", "read_text_file", "list_directory", "directory_tree", "search_files", "get_file_info"]
     },
     {
       "name": "github",
       "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
-      "mutating": ["create_issue", "create_pull_request", "push_files"]
+      "read_only": ["search_repositories", "get_file_contents", "list_issues", "search_code"]
     }
   ]
 }

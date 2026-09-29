@@ -72,7 +72,9 @@ Kuzgun, [MCP](https://modelcontextprotocol.io) sunucularına bağlanıp onların
 araçlarını (GitHub, dosya sistemi, veritabanı…) kendi araç setine ekleyebilir.
 `mcp_servers.example.json`'u `mcp_servers.json` olarak kopyala, düzenle; Kuzgun
 başlarken oradaki sunucuların araçlarını otomatik yükler. Değişiklik yapan MCP
-araçları `mutating` listesine yazılırsa mod/onay kapısına tabi olur.
+araçları **varsayılan olarak** mod/onay kapısına tabidir; yalnızca zararsız olanları
+`read_only` listesine ekle. **Güvenlik:** `command` gerçek komut çalıştırır ve MCP
+sonuçları (web gibi) dış/güvenilmez içeriktir — yalnızca **güvendiğin** sunucuları ekle.
 
 ## Hız ipuçları (Ollama)
 
