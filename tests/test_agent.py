@@ -210,3 +210,29 @@ def test_text_json_with_unknown_tool_is_plain_answer():
     out = run_turn(client, messages, _registry_with_echo())
     assert out == txt
     assert not any(m.get("role") == "tool" for m in messages)
+
+
+def test_pseudo_python_call_in_text_is_recovered():
+    # Görsel akışında gözlendi: model aracı çağırmak yerine satır olarak yazıyor.
+    from kuzgun.agent import extract_tool_calls_from_text
+
+    text = 'Emin olmak için araştıralım.\n web_search(query="Claude Code v2.1.284 Fable 5.1")\n'
+    calls = extract_tool_calls_from_text(text)
+    assert len(calls) == 1
+    assert calls[0].name == "web_search"
+    assert calls[0].arguments == {"query": "Claude Code v2.1.284 Fable 5.1"}
+
+
+def test_pseudo_call_parses_numbers_bools_and_single_quotes():
+    from kuzgun.agent import extract_tool_calls_from_text
+
+    calls = extract_tool_calls_from_text("read_file(path='a.txt', max_lines=10, raw=true)")
+    assert calls[0].arguments == {"path": "a.txt", "max_lines": 10, "raw": True}
+
+
+def test_pseudo_call_ignores_code_blocks_and_prose():
+    from kuzgun.agent import extract_tool_calls_from_text
+
+    assert extract_tool_calls_from_text("```python\nprint(x)\n```") == []
+    assert extract_tool_calls_from_text("topla(a, b) fonksiyonu iki sayıyı toplar") == []
+    assert extract_tool_calls_from_text("Sonuç: f(x)=3") == []

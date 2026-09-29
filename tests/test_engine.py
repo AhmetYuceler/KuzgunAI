@@ -377,7 +377,10 @@ def test_engine_compound_weather_message_still_asks_model(monkeypatch):
     assert any(m["role"] == "system" and "Kayseri" in m["content"] for m in eng.messages)
 
 
-def test_chat_with_images_uses_vision_client_and_keeps_text_history(tmp_path):
+def test_chat_with_images_two_stage_describe_then_answer_with_tools(tmp_path):
+    """Görsel model resmi BETİMLER (kimlik tahmini yok); soruyu araçlı metin ajanı
+    cevaplar (web_search yapabilsin). Betimleme geçmişe girer → sonraki mesajlar
+    resmi 'hatırlar'."""
     img = tmp_path / "ekran.png"
     img.write_bytes(b"\x89PNG")
     seen = {}
@@ -386,26 +389,38 @@ def test_chat_with_images_uses_vision_client_and_keeps_text_history(tmp_path):
         def chat(self, messages, tools):
             seen["messages"] = messages
             seen["tools"] = tools
-            return AssistantMessage(text="Bir terminal ekranı", tool_calls=[])
+            return AssistantMessage(text="Garajda, yüzünde morluk olan bir kadın; Ford yazısı", tool_calls=[])
 
+    text_client = FakeModelClient(
+        [
+            AssistantMessage(text="İpuçlarına göre bu Ironheart olabilir.", tool_calls=[]),
+            AssistantMessage(text="Evet, Ironheart (2025).", tool_calls=[]),
+        ]
+    )
     eng = KuzgunEngine(
-        client=FakeModelClient([]),  # metin modeli çağrılmamalı
+        client=text_client,
         vision_client=VisionClient(),
         embedder=FakeEmbedder(),
         memory=Memory(":memory:"),
         registry=ToolRegistry(),
     )
-    out = eng.chat("bu resimde ne var?", images=[str(img)])
-    assert out == "Bir terminal ekranı"
+    out = eng.chat("[resim 1] bu film hangi film?", images=[str(img)])
+    assert out == "İpuçlarına göre bu Ironheart olabilir."  # cevap metin ajanından
     assert not seen["tools"]  # görsel modele araç verilmez
     from kuzgun.engine import VISION_PROMPT
 
-    assert seen["messages"][0] == {"role": "system", "content": VISION_PROMPT}  # sade prompt
-    user = seen["messages"][-1]
-    assert user["role"] == "user" and isinstance(user["content"], list)
-    assert user["content"][1]["type"] == "image_url"
-    # Geçmişte base64 değil, metin + dosya yolu tutulur
+    assert seen["messages"][0] == {"role": "system", "content": VISION_PROMPT}
+    vis_user = seen["messages"][-1]
+    assert isinstance(vis_user["content"], list) and vis_user["content"][1]["type"] == "image_url"
+    assert "[resim 1]" not in vis_user["content"][0]["text"]  # kutu etiketi modele gitmez
+    # Betimleme geçmişte sistem notu olarak durur; kullanıcı mesajı metin + dosya adı
+    notes = [m for m in eng.messages if m["role"] == "system" and "morluk" in m["content"]]
+    assert notes and "ekran.png" in notes[0]["content"]
     hist_user = [m for m in eng.messages if m["role"] == "user"][-1]
-    assert isinstance(hist_user["content"], str)
-    assert "ekran.png" in hist_user["content"]
+    assert isinstance(hist_user["content"], str) and "ekran.png" in hist_user["content"]
     assert eng.memory.count() == 1
+    # Resimsiz devam mesajı: betimleme hâlâ bağlamda, görsel model tekrar çağrılmaz
+    seen.clear()
+    assert eng.chat("dizi aslında bir marvel dizisi, hangisi?") == "Evet, Ironheart (2025)."
+    assert not seen
+    assert any("morluk" in m["content"] for m in eng.messages if m["role"] == "system")

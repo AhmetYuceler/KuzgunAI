@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import threading
 
@@ -60,9 +61,21 @@ SYSTEM_PROMPT = (
 )
 
 VISION_PROMPT = (
-    "Adın Kuzgun. Türkçe konuşan dikkatli bir asistansın. Kullanıcı sana resim "
-    "gönderdi: resmi dikkatle incele ve sorusuna kısa, net, doğru cevap ver. "
-    "Soru yoksa resimde ne olduğunu özetle. Emin olmadığın ayrıntıyı uydurma."
+    "Sen bir görsel betimleme asistanısın. Sana verilen resmi Türkçe, ayrıntılı ve "
+    "TARAFSIZ betimle: görünen tüm yazılar/logolar (aynen), nesneler, kişiler "
+    "(görünüş, kıyafet, yaş/cinsiyet izlenimi, yüzdeki ayrıntılar), mekân ve ortam, "
+    "dönem/stil, renkler, dikkat çeken ayrıntılar. Bu resmin HANGİ film/dizi/kişi/"
+    "ürün/yer olduğunu TAHMİN ETME ve ad verme; yalnızca gördüğünü yaz. Emin "
+    "olmadığın ayrıntıyı uydurma."
+)
+_IMAGE_HEADER = "[Resim betimlemesi — görsel modelden, dosya: {names}]"
+_IMAGE_GUIDE = (
+    "Kullanıcının sorusunu bu betimlemeye dayanarak cevapla. Eğer resmin NE olduğu "
+    "(hangi film/dizi/oyun/kişi/ürün/yer) soruluyorsa: betimlemeden emin olarak "
+    "tanıyamazsın; ipuçlarını (yazılar, mekân, kişiler, kullanıcının verdiği bilgi) "
+    "birleştirip web_search ile ARAŞTIR ve bulduğun kaynağa dayanarak cevapla. "
+    "Araştırma sonuç vermezse UYDURMA: ipuçlarını listele, ne kadar emin olduğunu "
+    "söyle ve kullanıcıdan ek ipucu iste."
 )
 
 _NOTES_HEADER = "[Kalıcı notlar / kullanıcı hakkında hatırladıkların]"
@@ -257,19 +270,31 @@ class KuzgunEngine:
             )
         return self._vision_client
 
-    def _chat_with_images(self, messages: list[dict], message: str, images: list[str]) -> str:
-        """Resimli mesaj: görsel modele (araçsız) sorulur; geçmişe base64 değil,
-        metin + dosya yolu yazılır (bağlam şişmesin, hafızaya gömülebilsin)."""
-        content = build_user_content(message or "Bu resimde ne var?", images)
-        # Görsel modele sade bir sistem promptu: araç/planlama talimatları ona gereksiz
-        # (aksi halde "DÜŞÜN:" gibi kalıpları harfiyen yazıyor). Geçmiş korunur.
-        vision_msgs = [{"role": "system", "content": VISION_PROMPT}] + messages[1:]
-        reply = self.vision_client.chat(vision_msgs + [{"role": "user", "content": content}], None)
-        text = reply.text or ""
-        ekli = ", ".join(os.path.basename(p) for p in images)
-        messages.append({"role": "user", "content": f"{message}\n[ekli resim: {ekli}]"})
-        messages.append({"role": "assistant", "content": text})
-        return text
+    def _chat_with_images(
+        self, messages: list[dict], message: str, images: list[str], mode, cb, esc
+    ) -> str:
+        """Resimli mesaj, iki aşama (Claude'un yaptığı gibi):
+        1) görsel model resmi yalnızca BETİMLER (kimlik tahmini yasak);
+        2) betimleme geçmişe sistem notu olarak girer, soruyu ARAÇLI metin ajanı
+           cevaplar (kimlik sorusunda web_search yapar). Geçmişte base64 değil,
+           metin kalır → sonraki resimsiz mesajlar da betimlemeyi görür."""
+        question = re.sub(r"\[resim \d+\]\s*", "", message).strip()
+        names = ", ".join(os.path.basename(p) for p in images)
+        describe = [
+            {"role": "system", "content": VISION_PROMPT},
+            {"role": "user", "content": build_user_content("Bu resmi betimle.", images)},
+        ]
+        desc = (self.vision_client.chat(describe, None).text or "").strip()
+        messages.append(
+            {
+                "role": "system",
+                "content": f"{_IMAGE_HEADER.format(names=names)}\n{desc}\n\n{_IMAGE_GUIDE}",
+            }
+        )
+        messages.append(
+            {"role": "user", "content": f"{question or 'Bu resimde ne var?'}\n[ekli resim: {names}]"}
+        )
+        return run_turn(self.client, messages, self.registry, mode=mode, confirm=cb, escalate=esc)
 
     def history(self, session_id: str | None = None) -> list[dict]:
         if session_id is None:
@@ -323,7 +348,9 @@ class KuzgunEngine:
 
     def _run_chat(self, messages, message, mode, confirm, images=None) -> str:
         if images:
-            reply = self._chat_with_images(messages, message, images)
+            cb = confirm if confirm is not None else self.confirm
+            esc = self._escalate if self._escalate is not None else self._do_escalate
+            reply = self._chat_with_images(messages, message, images, mode, cb, esc)
             if reply and not reply.startswith("Error:"):
                 try:
                     self.memory.add(message, reply, self.embedder)

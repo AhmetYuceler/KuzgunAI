@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from kuzgun.models import AssistantMessage, ToolCall
 from kuzgun.permissions import is_allowed
@@ -46,11 +47,11 @@ def extract_tool_calls_from_text(text: str | None) -> list[ToolCall]:
         return []
     blob = _first_json_object(text)
     if not blob:
-        return []
+        return _pseudo_call(text)
     try:
         data = json.loads(blob)
     except Exception:
-        return []
+        return _pseudo_call(text)
     if not isinstance(data, dict):
         return []
     name = data.get("name") or data.get("tool")
@@ -60,6 +61,44 @@ def extract_tool_calls_from_text(text: str | None) -> list[ToolCall]:
     if name and isinstance(args, dict):
         return [ToolCall(id="text-1", name=str(name), arguments=args)]
     return []
+
+
+_PSEUDO_CALL = re.compile(r"(?m)^\s*([a-z_][a-z0-9_]*)\((.*)\)\s*$")
+_KWARG = re.compile(r"""\s*([a-z_][a-z0-9_]*)\s*=\s*("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|-?\d+(\.\d+)?|true|false|True|False)\s*(,|$)""")
+
+
+def _pseudo_call(text: str) -> list[ToolCall]:
+    """Metinde Python-çağrısı gibi yazılmış araç: `web_search(query="...")`.
+
+    7B model bazen aracı çağırmak yerine bunu satır olarak yazıp bırakıyor
+    (görsel akışında gözlendi). Yalnız kendi satırında, tamamı anahtar=değer
+    (dize/sayı/bool) argümanlı çağrıyı kabul eder; kod bloğu içindeki çağrılar
+    metin sayılır (``` içinde değilse). Kayıtlı araç mı kontrolü çağıran yapar.
+    """
+    if "```" in text:
+        return []
+    m = _PSEUDO_CALL.search(text)
+    if not m:
+        return []
+    name, raw = m.group(1), m.group(2).strip()
+    args: dict = {}
+    pos = 0
+    while pos < len(raw):
+        km = _KWARG.match(raw, pos)
+        if not km:
+            return []
+        key, val = km.group(1), km.group(2)
+        if val[0] in "\"'":
+            val = val[1:-1].replace("\\" + val[0], val[0])
+        elif val in ("true", "True"):
+            val = True
+        elif val in ("false", "False"):
+            val = False
+        else:
+            val = float(val) if "." in val else int(val)
+        args[key] = val
+        pos = km.end()
+    return [ToolCall(id="text-1", name=name, arguments=args)]
 
 
 def _assistant_to_history(msg: AssistantMessage) -> dict:
