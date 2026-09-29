@@ -7,7 +7,7 @@ import uuid
 from kuzgun.logging_setup import get_logger, timed
 from kuzgun.models import AssistantMessage, ToolCall
 from kuzgun.permissions import is_allowed
-from kuzgun.tools import ToolRegistry
+from kuzgun.tools import ToolRegistry, ToolResult
 
 log = get_logger("agent")
 
@@ -189,9 +189,10 @@ def run_turn(
                 with timed(log, "araç", id=turn_id, name=tc.name):
                     result = registry.execute(tc.name, tc.arguments)
             else:
-                result = reason
+                # İzin reddi HATA değil (model başarısızlığı sayılmaz → devretme tetiklemez).
+                result = ToolResult(reason, ok=True)
                 log.info("araç engellendi id=%s name=%s mode=%s", turn_id, tc.name, mode)
-            if isinstance(result, str) and result.startswith("Error:"):
+            if not result.ok:
                 step_error = True
                 log.warning("araç hatası id=%s name=%s: %s", turn_id, tc.name, result[:200])
             messages.append(

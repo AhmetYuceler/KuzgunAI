@@ -3,6 +3,22 @@ from __future__ import annotations
 from collections.abc import Callable
 
 
+class ToolResult(str):
+    """Araç çalıştırma sonucu. `str` gibi davranır (geriye dönük uyum: geçmişe
+    doğrudan yazılır, karşılaştırılır) ama bir `ok` bayrağı taşır.
+
+    Böylece ajan döngüsü hatayı METNE bakarak ('Error:' önekiyle) değil, açık
+    bayrakla anlar (B5): çıktısı gerçekten 'Error: 404' olan MEŞRU bir araç sonucu
+    yanlışlıkla hata sayılıp devretmeyi tetiklemez."""
+
+    ok: bool
+
+    def __new__(cls, text: str, ok: bool = True) -> ToolResult:
+        obj = super().__new__(cls, text)
+        obj.ok = ok
+        return obj
+
+
 def _allowed_keys(schema: dict) -> set[str] | None:
     """Şemadaki izinli parametre adları. Doğrulama atlanır (None döner) eğer:
     - `properties` tanımlı değilse (serbest şema), ya da
@@ -35,9 +51,9 @@ class ToolRegistry:
         entry = self._tools.get(name)
         return bool(entry[2]) if entry else False
 
-    def execute(self, name: str, arguments: dict) -> str:
+    def execute(self, name: str, arguments: dict) -> ToolResult:
         if name not in self._tools:
-            return f"Error: unknown tool {name}"
+            return ToolResult(f"Error: unknown tool {name}", ok=False)
         schema, fn, _ = self._tools[name]
         # Sözleşme doğrulaması: model yalnız şemada TANIMLI parametreleri geçebilir.
         # Gizli/dahili parametreler (ör. `_path`) şemada olmadığı için reddedilir.
@@ -45,9 +61,11 @@ class ToolRegistry:
         if allowed is not None:
             extra = set(arguments) - allowed
             if extra:
-                return f"Error: bilinmeyen parametre(ler): {', '.join(sorted(extra))}"
+                return ToolResult(
+                    f"Error: bilinmeyen parametre(ler): {', '.join(sorted(extra))}", ok=False
+                )
         try:
             result = fn(**arguments)
         except Exception as exc:  # bozuk argüman, çalışma hatası vb.
-            return f"Error: {exc}"
-        return str(result)
+            return ToolResult(f"Error: {exc}", ok=False)
+        return ToolResult(str(result), ok=True)

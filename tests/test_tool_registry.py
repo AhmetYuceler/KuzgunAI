@@ -73,6 +73,32 @@ def test_additional_properties_allows_extra_keys():
     assert seen == {"a": "1", "b": "2"}
 
 
+def test_execute_returns_toolresult_with_ok_flag():
+    from kuzgun.tools import ToolResult
+
+    reg = ToolRegistry()
+    reg.register(_schema("ok", {}), lambda: "sonuc")
+    res = reg.execute("ok", {})
+    assert isinstance(res, ToolResult)
+    assert res == "sonuc"          # str gibi davranır (geriye dönük uyum)
+    assert res.ok is True
+
+
+def test_legit_error_text_is_not_marked_error():
+    # B5: çıktısı "Error:" ile başlayan MEŞRU araç sonucu HATA sayılmamalı.
+    reg = ToolRegistry()
+    reg.register(_schema("api", {}), lambda: "Error: 404 (API'nin gerçek cevabı)")
+    res = reg.execute("api", {})
+    assert res.ok is True          # istisna yok → başarılı, metni ne olursa olsun
+
+
+def test_unknown_and_exception_are_not_ok():
+    reg = ToolRegistry()
+    reg.register(_schema("patlar", {}), lambda: (_ for _ in ()).throw(RuntimeError("x")))
+    assert reg.execute("yok", {}).ok is False       # bilinmeyen araç
+    assert reg.execute("patlar", {}).ok is False     # çalışma hatası
+
+
 def test_remember_is_mutating_in_default_registry():
     # A6 (bug #2): remember kalıcı nota yazar ve bu not her gelecek sistem promptuna
     # enjekte edilir -> model onaysız yazamamalı (mutating -> izin kapısına tabi).

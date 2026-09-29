@@ -98,6 +98,26 @@ def test_escalates_on_max_steps_when_escalate_given():
     assert out == "DEVREDILDI"
 
 
+def test_legit_error_output_does_not_escalate():
+    # B5: çıktısı "Error:" ile başlayan MEŞRU araç sonucu devretmeyi tetiklememeli.
+    reg = ToolRegistry()
+    reg.register(
+        {"type": "function", "function": {"name": "api",
+         "parameters": {"type": "object", "properties": {"q": {"type": "string"}}}}},
+        lambda q="": "Error: 404 (gerçek API cevabı)",
+    )
+    client = FakeModelClient([
+        AssistantMessage(text=None, tool_calls=[ToolCall("1", "api", {"q": "a"})]),
+        AssistantMessage(text=None, tool_calls=[ToolCall("2", "api", {"q": "b"})]),
+        AssistantMessage(text="yerel cevap", tool_calls=[]),
+    ])
+    escalated = []
+    out = run_turn(client, [{"role": "user", "content": "?"}], reg,
+                   escalate=lambda q: escalated.append(q) or "UZMAN")
+    assert out == "yerel cevap"     # devretme YOK (meşru çıktı hata sanılmadı)
+    assert escalated == []
+
+
 def test_large_tool_output_is_clipped_in_history():
     # B6: dev araç çıktısı 7B'nin küçük bağlamını doldurmasın; geçmişe kırpılmış girer.
     from kuzgun.agent import MAX_TOOL_CHARS
