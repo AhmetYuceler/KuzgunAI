@@ -50,3 +50,12 @@ def test_duplicate_registration_raises():
     reg.register(_schema("x", {}), lambda: "1")
     with pytest.raises(ValueError):
         reg.register(_schema("x", {}), lambda: "2")
+
+
+def test_remember_is_mutating_in_default_registry():
+    # A6 (bug #2): remember kalıcı nota yazar ve bu not her gelecek sistem promptuna
+    # enjekte edilir -> model onaysız yazamamalı (mutating -> izin kapısına tabi).
+    from kuzgun.engine import build_default_registry
+
+    reg = build_default_registry()
+    assert reg.is_mutating("remember") is True

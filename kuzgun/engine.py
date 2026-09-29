@@ -68,7 +68,10 @@ def build_default_registry() -> ToolRegistry:
     reg.register(WEB_SEARCH_SCHEMA, web_search)
     reg.register(FETCH_URL_SCHEMA, fetch_url)
     reg.register(ASK_EXPERT_SCHEMA, ask_expert)
-    reg.register(REMEMBER_SCHEMA, remember)  # kalıcı not (KUZGUN.md)
+    # A6 (bug #2): remember kalıcı nota yazar ve not her gelecek sistem promptuna
+    # girer → model onaysız yazamasın (mutating). Kullanıcının /hatirla komutu aracı
+    # doğrudan çağırdığı için bu kapıdan etkilenmez.
+    reg.register(REMEMBER_SCHEMA, remember, mutating=True)
     reg.register(MEDIA_SCHEMA, media_control)  # zararsız medya/müzik kontrolü
     reg.register(WEATHER_SCHEMA, weather)  # hava durumu (konumdan)
     reg.register(WRITE_FILE_SCHEMA, write_file, mutating=True)
