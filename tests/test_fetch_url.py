@@ -1,4 +1,22 @@
-from kuzgun.tools.fetch_url import fetch_url, FETCH_URL_SCHEMA, UNTRUSTED_PREFIX
+from kuzgun.tools.fetch_url import (
+    fetch_url,
+    FETCH_URL_SCHEMA,
+    UNTRUSTED_PREFIX,
+    _is_safe_host,
+)
+
+
+def test_is_safe_host_blocks_internal():
+    assert _is_safe_host("127.0.0.1") is False        # loopback
+    assert _is_safe_host("localhost") is False         # loopback (çözümlenir)
+    assert _is_safe_host("169.254.169.254") is False   # bulut metadata / link-local
+    assert _is_safe_host("10.0.0.5") is False           # özel
+    assert _is_safe_host("192.168.1.1") is False        # özel
+    assert _is_safe_host("") is False
+
+
+def test_is_safe_host_allows_public_literal():
+    assert _is_safe_host("8.8.8.8") is True
 
 
 def test_rejects_non_http_scheme():
