@@ -63,6 +63,19 @@ kuzgun-client http://SUNUCU_ADRESI:8000
 | `KUZGUN_TOKEN` | *(boş)* | Uzak erişim için bearer token (aşağıya bak) |
 | `KUZGUN_ALLOWED_HOSTS` | `127.0.0.1,localhost` | İzinli Host başlıkları |
 
+## Hız ipuçları (Ollama)
+
+Ollama'yı başlatmadan önce şu ortam değişkenleriyle belirgin hız kazanılır:
+
+| Değişken | Öneri | Etki |
+|---|---|---|
+| `OLLAMA_KEEP_ALIVE` | `-1` | Model bellekte kalır; soğuk başlatma gecikmesi (ilk soruda ~1 dk) biter |
+| `OLLAMA_FLASH_ATTENTION` | `1` | Flash Attention; KV-cache kuantasyonunu açar |
+| `OLLAMA_KV_CACHE_TYPE` | `q8_0` | KV-cache belleği yarıya iner → daha uzun bağlam sığar |
+
+Model Q4_K_M'de kalsın (7B için ~4.7 GB tatlı nokta). Zor kodlama/akıl işleri
+zaten otomatik olarak Claude'a devredilir.
+
 ## Güvenlik
 
 - Değişiklik yapan araçlar (`write_file`, `run_command`) **mod kapısına** tabidir:
