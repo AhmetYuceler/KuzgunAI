@@ -3,11 +3,12 @@ from __future__ import annotations
 import secrets
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from kuzgun.config import Config, load_config
 from kuzgun.engine import KuzgunEngine
+from kuzgun.inbox import Inbox
 
 
 class ChatRequest(BaseModel):
@@ -16,10 +17,23 @@ class ChatRequest(BaseModel):
     session: str = "default"
 
 
+class InboxSend(BaseModel):
+    to: str
+    text: str
+    sender: str = Field(default="anon", alias="from")
+
+    model_config = {"populate_by_name": True}
+
+
+class InboxPoll(BaseModel):
+    session: str
+
+
 def create_app(engine: KuzgunEngine | None = None, config: Config | None = None) -> FastAPI:
     engine = engine if engine is not None else KuzgunEngine()
     cfg = config if config is not None else load_config()
     app = FastAPI(title="Kuzgun Motoru")
+    inbox = Inbox()  # C11: oturumlar-arası mesaj kutusu (yetki taşımaz, sadece veri)
 
     # DNS-rebinding koruması: yalnızca izinli Host başlıklarına yanıt ver.
     # Boşsa güvenli varsayılana dön (asla '*'a düşme).
@@ -48,6 +62,16 @@ def create_app(engine: KuzgunEngine | None = None, config: Config | None = None)
         return {
             "reply": engine.chat(req.message, mode=safe_mode, session_id=req.session)
         }
+
+    @app.post("/inbox/send")
+    def inbox_send(req: InboxSend, _: None = Depends(require_auth)) -> dict:
+        # GÜVENLİK: gelen mesaj yalnız veridir; onay/mod/komut yetkisi taşımaz.
+        accepted = inbox.send(req.to, req.sender, req.text)
+        return {"accepted": accepted}
+
+    @app.post("/inbox/poll")
+    def inbox_poll(req: InboxPoll, _: None = Depends(require_auth)) -> dict:
+        return {"messages": inbox.poll(req.session)}
 
     return app
 
