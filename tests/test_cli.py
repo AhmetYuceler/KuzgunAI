@@ -49,3 +49,27 @@ def test_system_prompt_warns_about_web():
     from kuzgun.cli import SYSTEM_PROMPT
 
     assert "GÜVENİLMEZ" in SYSTEM_PROMPT
+
+
+def test_inject_memory_adds_relevant_context():
+    from kuzgun.cli import inject_memory
+    from kuzgun.memory import Memory
+    from kuzgun.embeddings import FakeEmbedder
+
+    m = Memory(":memory:")
+    e = FakeEmbedder()
+    m.add("python nedir", "python bir dildir", e)
+    messages = []
+    inject_memory(messages, m, e, "python hakkinda bilgi")
+    assert len(messages) == 1 and messages[0]["role"] == "system"
+    assert "python nedir" in messages[0]["content"]
+
+
+def test_inject_memory_empty_adds_nothing():
+    from kuzgun.cli import inject_memory
+    from kuzgun.memory import Memory
+    from kuzgun.embeddings import FakeEmbedder
+
+    messages = []
+    inject_memory(messages, Memory(":memory:"), FakeEmbedder(), "soru")
+    assert messages == []

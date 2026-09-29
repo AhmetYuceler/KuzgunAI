@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from kuzgun.agent import run_turn
+from kuzgun.embeddings import OllamaEmbedder
+from kuzgun.memory import Memory, recall_context
 from kuzgun.models import OllamaClient
 from kuzgun.permissions import MODES
 from kuzgun.tools import ToolRegistry
@@ -54,6 +56,17 @@ def handle_slash(line: str, state: dict) -> str | None:
     return f"Bilinmeyen komut: {cmd}. /yardim yaz."
 
 
+def build_memory(db_path: str = "data/memory.db") -> Memory:
+    return Memory(db_path)
+
+
+def inject_memory(messages: list[dict], memory: Memory, embedder, user_text: str) -> None:
+    """Kullanıcı mesajından önce ilgili geçmişi 'system' notu olarak ekler."""
+    ctx = recall_context(memory, user_text, embedder)
+    if ctx:
+        messages.append({"role": "system", "content": ctx})
+
+
 def _confirm(name: str, arguments: dict) -> bool:
     print(f"\n[onay] Kuzgun '{name}' çalıştırmak istiyor: {arguments}")
     ans = input("İzin veriyor musun? (e/h) ").strip().lower()
@@ -62,6 +75,8 @@ def _confirm(name: str, arguments: dict) -> bool:
 
 def main() -> None:
     client = OllamaClient()
+    embedder = OllamaEmbedder()
+    memory = build_memory()
     registry = build_default_registry()
     state = {"mode": "normal", "quit": False}
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -79,6 +94,10 @@ def main() -> None:
             if state["quit"]:
                 break
             continue
+        try:
+            inject_memory(messages, memory, embedder, user)
+        except Exception:
+            pass  # embedding modeli yoksa hafıza sessizce atlanır
         messages.append({"role": "user", "content": user})
         try:
             cevap = run_turn(
@@ -87,6 +106,10 @@ def main() -> None:
         except Exception as exc:
             cevap = f"[hata] {exc}"
         print(f"\nkuzgun> {cevap}")
+        try:
+            memory.add(user, cevap, embedder)  # öğrenme: konuşmayı hafızaya yaz
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
