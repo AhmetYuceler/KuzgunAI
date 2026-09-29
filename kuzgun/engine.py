@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import os
 import re
-import sys
 import threading
 
 from kuzgun.agent import run_turn
+from kuzgun.bootstrap import (  # B3: kurulum bootstrap'te; build_default_registry re-export
+    build_default_registry,
+    build_registry_with_mcp,
+    make_client,
+    make_embedder,
+    make_memory,
+)
 from kuzgun.config import Config, load_config
-from kuzgun.embeddings import OllamaEmbedder
+from kuzgun.logging_setup import get_logger
 from kuzgun.memory import Memory, recall_context
-from kuzgun.mcp import load_mcp_servers
-from kuzgun.models import OllamaClient
 from kuzgun.notebook import load_notes
 from kuzgun.orchestrator import _plan_with_model, _synth_with_model, orchestrate
 from kuzgun.router import (
@@ -23,19 +27,14 @@ from kuzgun.router import (
 from kuzgun.sessions import SessionStore
 from kuzgun.teacher import ask_claude
 from kuzgun.tools import ToolRegistry
+from kuzgun.tools.media_control import media_control
+from kuzgun.tools.weather import weather
 from kuzgun.verify import check_python_syntax, extract_code_blocks
 from kuzgun.vision import build_user_content
-from kuzgun.tools.read_file import read_file, READ_FILE_SCHEMA
-from kuzgun.tools.write_file import write_file, WRITE_FILE_SCHEMA
-from kuzgun.tools.run_command import run_command, RUN_COMMAND_SCHEMA
-from kuzgun.tools.glob_search import glob_search, GLOB_SCHEMA
-from kuzgun.tools.grep_search import grep_search, GREP_SCHEMA
-from kuzgun.tools.web_search import web_search, WEB_SEARCH_SCHEMA
-from kuzgun.tools.fetch_url import fetch_url, FETCH_URL_SCHEMA
-from kuzgun.tools.ask_expert import ask_expert, ASK_EXPERT_SCHEMA
-from kuzgun.tools.remember import remember, REMEMBER_SCHEMA
-from kuzgun.tools.media_control import media_control, MEDIA_SCHEMA
-from kuzgun.tools.weather import weather, WEATHER_SCHEMA
+
+__all__ = ["KuzgunEngine", "SYSTEM_PROMPT", "build_default_registry", "inject_memory"]
+
+log = get_logger("engine")
 
 SYSTEM_PROMPT = (
     "Adın Kuzgun. Türkçe konuşan, dikkatli ve yardımsever bir terminal asistanısın.\n"
@@ -81,47 +80,15 @@ _IMAGE_GUIDE = (
 _NOTES_HEADER = "[Kalıcı notlar / kullanıcı hakkında hatırladıkların]"
 
 
-def build_default_registry() -> ToolRegistry:
-    reg = ToolRegistry()
-    reg.register(READ_FILE_SCHEMA, read_file)
-    reg.register(GLOB_SCHEMA, glob_search)
-    reg.register(GREP_SCHEMA, grep_search)
-    reg.register(WEB_SEARCH_SCHEMA, web_search)
-    reg.register(FETCH_URL_SCHEMA, fetch_url)
-    reg.register(ASK_EXPERT_SCHEMA, ask_expert)
-    # A6 (bug #2): remember kalıcı nota yazar ve not her gelecek sistem promptuna
-    # girer → model onaysız yazamasın (mutating). Kullanıcının /hatirla komutu aracı
-    # doğrudan çağırdığı için bu kapıdan etkilenmez.
-    reg.register(REMEMBER_SCHEMA, remember, mutating=True)
-    reg.register(MEDIA_SCHEMA, media_control)  # zararsız medya/müzik kontrolü
-    reg.register(WEATHER_SCHEMA, weather)  # hava durumu (konumdan)
-    reg.register(WRITE_FILE_SCHEMA, write_file, mutating=True)
-    reg.register(RUN_COMMAND_SCHEMA, run_command, mutating=True)
-    return reg
-
-
-def build_memory(db_path: str = "data/memory.db") -> Memory:
-    return Memory(db_path)
-
-
 def inject_memory(
-    messages: list[dict], memory: Memory, embedder, user_text: str, min_score: float = 0.0
+    messages: list[dict], memory, embedder, user_text: str, min_score: float = 0.0
 ) -> None:
     """Kullanıcı mesajından önce ilgili geçmişi 'system' notu olarak ekler.
 
-    `min_score`: kosinüs alaka eşiği. nomic-embed'de alakasız kayıtlar ~0.6,
-    alakalılar ~0.8 çıkıyor; eşik olmadan her soruya rastgele geçmiş giriyor ve
-    7B saptırılıyordu ('word dosyası oluştur' → 'en sevdiğin renk mor')."""
-    if min_score > 0:
-        hits = [h for h in memory.search(user_text, embedder) if h["score"] >= min_score]
-        if not hits:
-            return
-        lines = ["[Geçmişten ilgili notlar — daha önce şunları konuştuk:]"]
-        for h in hits:
-            lines.append(f"- Sen: {h['user']}\n  Kuzgun: {h['assistant']}")
-        messages.append({"role": "system", "content": "\n".join(lines)})
-        return
-    ctx = recall_context(memory, user_text, embedder)
+    `min_score`: kosinüs alaka eşiği (B7). nomic-embed'de alakasız kayıtlar ~0.6,
+    alakalılar ~0.8; eşik olmadan her soruya rastgele geçmiş girip 7B'yi saptırıyordu
+    ('word dosyası oluştur' → 'en sevdiğin renk mor'). Filtreleme recall_context'te."""
+    ctx = recall_context(memory, user_text, embedder, min_score=min_score)
     if ctx:
         messages.append({"role": "system", "content": ctx})
 
@@ -158,37 +125,20 @@ class KuzgunEngine:
         self.confirm = confirm
         self.autoroute = cfg.autoroute
         self.reflect = cfg.reflect
+        self.max_history = cfg.max_history  # bağlam kırpma sınırı (B2/B6)
         # Takılınca çağrılan devretme. None ise varsayılan: Claude'a danış.
         self._escalate = escalate
-        self.client = (
-            client
-            if client is not None
-            else OllamaClient(model=cfg.model, base_url=cfg.ollama_url, timeout=cfg.model_timeout)
-        )
-        self.embedder = (
-            embedder
-            if embedder is not None
-            else OllamaEmbedder(model=cfg.embed_model, base_url=cfg.ollama_url)
-        )
-        self.memory = memory if memory is not None else Memory(cfg.db_path)
-        # Kod-uzmanı model (kod işleri buna yönlenir); genel modelle aynı Ollama.
+        # Somut kurulum bootstrap fabrikalarında (B3); test/sunucu bağımlılık enjekte eder.
+        self.client = client if client is not None else make_client(cfg, cfg.model)
+        self.embedder = embedder if embedder is not None else make_embedder(cfg)
+        self.memory = memory if memory is not None else make_memory(cfg)
+        # Kod-uzmanı model (kod işleri buna yönlenir); genel modelle aynı arka uç.
         self.coder_client = (
-            coder_client
-            if coder_client is not None
-            else OllamaClient(
-                model=cfg.coder_model, base_url=cfg.ollama_url, timeout=cfg.model_timeout
-            )
+            coder_client if coder_client is not None else make_client(cfg, cfg.coder_model)
         )
         # Görsel model: resimli mesajlarda kullanılır (tembel; resim yoksa hiç açılmaz).
         self._vision_client = vision_client
-        if registry is not None:
-            self.registry = registry
-        else:
-            self.registry = build_default_registry()
-            try:
-                load_mcp_servers(self.registry)  # mcp_servers.json varsa araçları ekler
-            except Exception:  # noqa: BLE001
-                pass
+        self.registry = registry if registry is not None else build_registry_with_mcp(cfg)
         self.messages: list[dict] = self._new_history()
         self._store = SessionStore(self._new_history)  # isimli oturumlar (izole + kilitli)
         self._default_lock = threading.Lock()  # session_id=None (ana konuşma) için
@@ -279,10 +229,7 @@ class KuzgunEngine:
     @property
     def vision_client(self):
         if self._vision_client is None:
-            cfg = self.config
-            self._vision_client = OllamaClient(
-                model=cfg.vision_model, base_url=cfg.ollama_url, timeout=cfg.model_timeout
-            )
+            self._vision_client = make_client(self.config, self.config.vision_model)
         return self._vision_client
 
     def _chat_with_images(
@@ -317,12 +264,12 @@ class KuzgunEngine:
         return self._store.get(session_id)
 
     def _trim(self, messages: list[dict]) -> None:
-        if len(messages) <= self.MAX_HISTORY:
+        if len(messages) <= self.max_history:
             return
         head = messages[:1]
         if self._is_notes(messages[1]):  # kalıcı notlar kırpılmaz
             head = messages[:2]
-        tail = messages[-(self.MAX_HISTORY - len(head)) :]
+        tail = messages[-(self.max_history - len(head)) :]
         # Kuyruk bir 'user' mesajıyla başlasın — sarkan tool/assistant kalmasın.
         while tail and tail[0].get("role") != "user":
             tail.pop(0)
@@ -370,7 +317,7 @@ class KuzgunEngine:
                 try:
                     self.memory.add(message, reply, self.embedder)
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[hafıza-uyarı] kaydedilemedi: {exc}", file=sys.stderr)
+                    log.warning("hafıza kaydedilemedi: %s", exc)
             self._trim(messages)
             return reply
         cb = confirm if confirm is not None else self.confirm
@@ -401,14 +348,11 @@ class KuzgunEngine:
         if not routed:
             try:
                 inject_memory(
-                    messages,
-                    self.memory,
-                    self.embedder,
-                    message,
+                    messages, self.memory, self.embedder, message,
                     min_score=self.config.memory_min_score,
                 )
             except Exception as exc:  # noqa: BLE001
-                print(f"[hafıza-uyarı] geçmiş çağrılamadı: {exc}", file=sys.stderr)
+                log.warning("hafıza geçmişi çağrılamadı: %s", exc)
         messages.append({"role": "user", "content": message})
         if routed:
             reply = esc(message)
@@ -426,6 +370,6 @@ class KuzgunEngine:
             try:
                 self.memory.add(message, reply, self.embedder)
             except Exception as exc:  # noqa: BLE001
-                print(f"[hafıza-uyarı] kaydedilemedi: {exc}", file=sys.stderr)
+                log.warning("hafıza kaydedilemedi: %s", exc)
         self._trim(messages)
         return reply

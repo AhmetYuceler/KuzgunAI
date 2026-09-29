@@ -22,9 +22,11 @@ REMEMBER_SCHEMA = {
 }
 
 
-def remember(fact: str, _path=None) -> str:
-    if _path is None:
-        from kuzgun.config import load_config
+def remember(fact: str, _path: str) -> str:
+    """Bir bilgiyi kalıcı not dosyasına ekler.
 
-        _path = load_config().notes_path
+    `_path` şemada YOK; model geçemez (ToolRegistry reddeder). Notes yolu, aracı
+    kaydeden bootstrap tarafından `functools.partial` ile bağlanır (B3), ya da
+    doğrudan çağıran (CLI /hatirla) tarafından verilir — böylece bu modül config'e
+    bağımlı değildir."""
     return add_note(_path, fact)

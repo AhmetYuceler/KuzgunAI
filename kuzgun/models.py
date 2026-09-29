@@ -26,7 +26,7 @@ class ModelClient(Protocol):
     Claude/vLLM istemcileri de aynı sözleşmeye uyar.
     """
 
-    def chat(self, messages, tools) -> "AssistantMessage": ...
+    def chat(self, messages, tools) -> AssistantMessage: ...
 
 
 def _parse_arguments(raw: str | None) -> dict:
@@ -58,28 +58,43 @@ class FakeModelClient:
         return msg
 
 
-class OllamaClient:
-    """Ollama'nın OpenAI-uyumlu API'sine bağlanır."""
+class OpenAICompatBackend:
+    """OpenAI-uyumlu bir sohbet API'sine bağlanır (Ollama, vLLM, Claude-proxy…).
+
+    Ollama varsayılan; `base_url`/`api_key`/`model` değiştirerek başka bir arka uca
+    (ör. GPU sunucusundaki vLLM) taşınır — motor kodu değişmeden (B3/Faz D)."""
 
     def __init__(
         self,
         model: str = "qwen2.5:7b-instruct",
         base_url: str = "http://localhost:11434/v1",
         timeout: float = 300,
+        api_key: str = "ollama",
+        temperature: float = 0.2,
+        max_tokens: int | None = None,
+        max_retries: int = 1,
     ):
         from openai import OpenAI
 
-        # timeout: Ollama takılırsa sonsuza dek beklenmesin (Ctrl+C'siz kurtulma).
+        # timeout: arka uç takılırsa sonsuza dek beklenmesin (Ctrl+C'siz kurtulma).
         self.client_timeout = timeout
-        self._client = OpenAI(base_url=base_url, api_key="ollama", timeout=timeout)
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+        self._client = OpenAI(
+            base_url=base_url, api_key=api_key, timeout=timeout, max_retries=max_retries
+        )
         self._model = model
 
     def chat(self, messages, tools) -> AssistantMessage:
+        kwargs = {}
+        if self._max_tokens:
+            kwargs["max_tokens"] = self._max_tokens
         resp = self._client.chat.completions.create(
             model=self._model,
             messages=messages,
             tools=tools or None,
-            temperature=0.2,
+            temperature=self._temperature,
+            **kwargs,
         )
         m = resp.choices[0].message
         tool_calls = []
@@ -92,3 +107,7 @@ class OllamaClient:
                 )
             )
         return AssistantMessage(text=m.content, tool_calls=tool_calls)
+
+
+# Eski ad, geriye dönük uyum için takma ad olarak korunur.
+OllamaClient = OpenAICompatBackend
