@@ -117,10 +117,14 @@ class KuzgunEngine:
         escalate=None,
         coder_client=None,
         vision_client=None,
+        extra_context: str | None = None,
     ):
         cfg = config if config is not None else load_config()
         self.config = cfg
         self.system_prompt = system_prompt
+        # Proje-özel ek sistem bağlamı (ör. çalışma klasörünün KUZGUN.md'si). Her
+        # oturumun başına eklenir; cli/analyze tarafı engine'e dokunmadan kullanır.
+        self.extra_context = extra_context
         self.notes = load_notes(cfg.notes_path)  # kalıcı notlar (bağlama yüklenir)
         self.confirm = confirm
         self.autoroute = cfg.autoroute
@@ -157,6 +161,8 @@ class KuzgunEngine:
     def _new_history(self) -> list[dict]:
         hist = [{"role": "system", "content": self.system_prompt}]
         self._sync_notes(hist)  # kalıcı notları (KUZGUN.md) her konuşmaya yükle
+        if self.extra_context:  # proje-özel bağlam (varsa)
+            hist.append({"role": "system", "content": self.extra_context})
         return hist
 
     def _sync_notes(self, messages: list[dict]) -> None:

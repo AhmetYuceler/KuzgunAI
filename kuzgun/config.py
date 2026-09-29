@@ -46,7 +46,6 @@ class Config:
     max_history: int = 24  # bağlamda tutulan azami mesaj (sistem + son turlar)
     request_timeout: int = 300  # model HTTP isteği zaman aşımı (saniye)
     mcp_config_path: str = "mcp_servers.json"  # MCP sunucu tanımları
-    memory_min_score: float = 0.0  # hafıza geri-çağırma benzerlik eşiği (0 = filtre yok)
 
 
 def _float_env(name: str, default: float) -> float:
@@ -61,13 +60,6 @@ def _int_env(name: str, default: int) -> int:
         return int(os.environ.get(name, default))
     except ValueError:
         return default  # bozuk değer başlatmayı çökertmesin
-
-
-def _float_env(name: str, default: float) -> float:
-    try:
-        return float(os.environ.get(name, default))
-    except ValueError:
-        return default
 
 
 def _resolve(path: str, home: str | None) -> str:
@@ -118,5 +110,4 @@ def load_config() -> Config:
         max_history=_int_env("KUZGUN_MAX_HISTORY", d.max_history),
         request_timeout=_int_env("KUZGUN_REQUEST_TIMEOUT", d.model_timeout),
         mcp_config_path=os.environ.get("KUZGUN_MCP_CONFIG", d.mcp_config_path),
-        memory_min_score=_float_env("KUZGUN_MEMORY_MIN_SCORE", d.memory_min_score),
     )

@@ -11,6 +11,17 @@ import pytest
 from kuzgun.models import AssistantMessage
 
 
+def test_extra_context_injected_into_every_session(make_engine):
+    # B4 kancası: proje-özel bağlam (ör. çalışma klasörünün KUZGUN.md'si) her
+    # oturumun sistem bağlamına girer — peer'ın "proje analizi" işi engine'e
+    # dokunmadan bunu kullanabilsin.
+    eng = make_engine(extra_context="[Proje notu] Bu bir FastAPI projesidir.")
+    assert any("FastAPI projesidir" in m.get("content", "") for m in eng.messages)
+    assert any(
+        "FastAPI projesidir" in m.get("content", "") for m in eng.history("yeni-oturum")
+    )
+
+
 class _BoomClient:
     """chat çağrılınca patlar (ağ hatası benzeri)."""
 

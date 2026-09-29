@@ -115,7 +115,9 @@ def recall_context(
 
     Hafızada ilgili kayıt yoksa (ya da hepsi eşik altındaysa) boş string döner.
     """
-    hits = memory.search(query, embedder, k, min_score=min_score)
+    # Filtreleme burada yapılır (search'e min_score geçirmeyiz) → her MemoryStore
+    # duck-type'ı (min_score parametresi olmayan search dahil) ile uyumlu kalır.
+    hits = [h for h in memory.search(query, embedder, k) if h.get("score", 1.0) >= min_score]
     if not hits:
         return ""
     lines = ["[Geçmişten ilgili notlar — daha önce şunları konuştuk:]"]
