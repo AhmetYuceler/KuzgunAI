@@ -98,6 +98,46 @@ def test_escalates_on_max_steps_when_escalate_given():
     assert out == "DEVREDILDI"
 
 
+def test_extract_wellformed_json_tool_call():
+    from kuzgun.agent import extract_tool_calls_from_text
+
+    txt = '```json\n{"name": "write_file", "arguments": {"path": "a.txt", "content": "hi"}}\n```'
+    tcs = extract_tool_calls_from_text(txt)
+    assert len(tcs) == 1
+    assert tcs[0].name == "write_file"
+    assert tcs[0].arguments["path"] == "a.txt"
+
+
+def test_extract_handles_extra_trailing_brace():
+    from kuzgun.agent import extract_tool_calls_from_text
+
+    tcs = extract_tool_calls_from_text('{"name": "echo", "arguments": {"text": "x"}}}')
+    assert len(tcs) == 1 and tcs[0].name == "echo"
+
+
+def test_extract_plain_text_returns_empty():
+    from kuzgun.agent import extract_tool_calls_from_text
+
+    assert extract_tool_calls_from_text("merhaba nasılsın, bugün hava güzel") == []
+
+
+def test_loop_executes_text_json_tool_call():
+    # Model araç çağrısını gerçek çağrı yerine metin-json olarak verse bile çalışmalı.
+    client = FakeModelClient(
+        [
+            AssistantMessage(text='{"name":"echo","arguments":{"text":"x"}}', tool_calls=[]),
+            AssistantMessage(text="bitti", tool_calls=[]),
+        ]
+    )
+    messages = [{"role": "user", "content": "?"}]
+    out = run_turn(client, messages, _registry_with_echo())
+    assert out == "bitti"
+    assert any(
+        m.get("role") == "tool" and "ARAC: x" in m.get("content", "")
+        for m in messages
+    )
+
+
 def _spy_registry():
     """Çağrılınca kaydeden, değişiklik yapan (mutating) bir araç."""
     reg = ToolRegistry()

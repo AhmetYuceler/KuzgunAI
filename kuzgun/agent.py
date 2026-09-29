@@ -2,9 +2,64 @@ from __future__ import annotations
 
 import json
 
-from kuzgun.models import AssistantMessage
+from kuzgun.models import AssistantMessage, ToolCall
 from kuzgun.permissions import is_allowed
 from kuzgun.tools import ToolRegistry
+
+
+def _first_json_object(text: str) -> str | None:
+    """Metindeki ilk DENGELİ {...} nesnesini döndürür (fazla kapanış parantezi tolere)."""
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def extract_tool_calls_from_text(text: str | None) -> list[ToolCall]:
+    """Model, araç çağrısını gerçek çağrı yerine metin-JSON olarak verirse yakalar.
+
+    Örn: '```json {"name":"write_file","arguments":{...}}```' → ToolCall.
+    Küçük modellerin sık yaptığı format hatasını telafi eder.
+    """
+    if not text:
+        return []
+    blob = _first_json_object(text)
+    if not blob:
+        return []
+    try:
+        data = json.loads(blob)
+    except Exception:
+        return []
+    if not isinstance(data, dict):
+        return []
+    name = data.get("name") or data.get("tool")
+    args = data.get("arguments")
+    if args is None:
+        args = data.get("parameters", {})
+    if name and isinstance(args, dict):
+        return [ToolCall(id="text-1", name=str(name), arguments=args)]
+    return []
 
 
 def _assistant_to_history(msg: AssistantMessage) -> dict:
@@ -44,6 +99,12 @@ def run_turn(
     err_streak = 0
     for _ in range(max_steps):
         assistant = client.chat(messages, registry.schemas())
+        # Model tool call'u metin-JSON olarak verdiyse gerçek çağrıya çevir.
+        if not assistant.tool_calls:
+            recovered = extract_tool_calls_from_text(assistant.text)
+            if recovered:
+                assistant.tool_calls = recovered
+                assistant.text = None
         messages.append(_assistant_to_history(assistant))
         if not assistant.tool_calls:
             return assistant.text or ""
