@@ -98,6 +98,46 @@ def test_escalates_on_max_steps_when_escalate_given():
     assert out == "DEVREDILDI"
 
 
+def test_large_tool_output_is_clipped_in_history():
+    # B6: dev araç çıktısı 7B'nin küçük bağlamını doldurmasın; geçmişe kırpılmış girer.
+    from kuzgun.agent import MAX_TOOL_CHARS
+
+    reg = ToolRegistry()
+    big = "A" * (MAX_TOOL_CHARS + 5000)
+    reg.register(
+        {"type": "function", "function": {"name": "buyuk",
+         "parameters": {"type": "object", "properties": {}}}},
+        lambda: big,
+    )
+    client = FakeModelClient([
+        AssistantMessage(text=None, tool_calls=[ToolCall("1", "buyuk", {})]),
+        AssistantMessage(text="ok", tool_calls=[]),
+    ])
+    messages = [{"role": "user", "content": "?"}]
+    run_turn(client, messages, reg)
+    tool_msg = next(m for m in messages if m.get("role") == "tool")
+    assert len(tool_msg["content"]) < len(big)          # kırpıldı
+    assert "kırpıldı" in tool_msg["content"]             # kırpma notu var
+    assert len(tool_msg["content"]) <= MAX_TOOL_CHARS + 200
+
+
+def test_small_tool_output_not_clipped():
+    reg = ToolRegistry()
+    reg.register(
+        {"type": "function", "function": {"name": "kucuk",
+         "parameters": {"type": "object", "properties": {}}}},
+        lambda: "kısa sonuç",
+    )
+    client = FakeModelClient([
+        AssistantMessage(text=None, tool_calls=[ToolCall("1", "kucuk", {})]),
+        AssistantMessage(text="ok", tool_calls=[]),
+    ])
+    messages = [{"role": "user", "content": "?"}]
+    run_turn(client, messages, reg)
+    tool_msg = next(m for m in messages if m.get("role") == "tool")
+    assert tool_msg["content"] == "kısa sonuç"
+
+
 def test_escalated_reply_is_appended_to_history():
     # A3 (bug #5): run_turn uzmana devrederse, dönen cevap geçmişe de yazılmalı;
     # aksi halde bir sonraki tur bağlamında asistanın cevabı eksik kalır.

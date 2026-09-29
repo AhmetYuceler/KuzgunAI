@@ -11,6 +11,19 @@ from kuzgun.tools import ToolRegistry
 
 log = get_logger("agent")
 
+# B6: araç çıktısı bağlamı doldurmasın; bundan uzunsa kırpılıp geçmişe öyle girer.
+MAX_TOOL_CHARS = 4000
+
+
+def _clip(text: str, limit: int = MAX_TOOL_CHARS) -> str:
+    """Uzun araç çıktısını baş+son koruyarak kırpar (7B'nin küçük bağlamı için)."""
+    if len(text) <= limit:
+        return text
+    head = text[: limit // 2]
+    tail = text[-limit // 4 :]
+    atlanan = len(text) - len(head) - len(tail)
+    return f"{head}\n... [{atlanan} karakter kırpıldı] ...\n{tail}"
+
 
 def _first_json_object(text: str) -> str | None:
     """Metindeki ilk DENGELİ {...} nesnesini döndürür (fazla kapanış parantezi tolere)."""
@@ -182,7 +195,7 @@ def run_turn(
                 step_error = True
                 log.warning("araç hatası id=%s name=%s: %s", turn_id, tc.name, result[:200])
             messages.append(
-                {"role": "tool", "tool_call_id": tc.id, "content": result}
+                {"role": "tool", "tool_call_id": tc.id, "content": _clip(str(result))}
             )
         err_streak = err_streak + 1 if step_error else 0
         # Devir tetikleyicileri: döngü ya da üst üste araç hatası.
