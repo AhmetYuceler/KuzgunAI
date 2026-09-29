@@ -66,6 +66,14 @@ kuzgun-client http://SUNUCU_ADRESI:8000
 | `KUZGUN_TOKEN` | *(boş)* | Uzak erişim için bearer token (aşağıya bak) |
 | `KUZGUN_ALLOWED_HOSTS` | `127.0.0.1,localhost` | İzinli Host başlıkları |
 
+## MCP araçları (isteğe bağlı)
+
+Kuzgun, [MCP](https://modelcontextprotocol.io) sunucularına bağlanıp onların
+araçlarını (GitHub, dosya sistemi, veritabanı…) kendi araç setine ekleyebilir.
+`mcp_servers.example.json`'u `mcp_servers.json` olarak kopyala, düzenle; Kuzgun
+başlarken oradaki sunucuların araçlarını otomatik yükler. Değişiklik yapan MCP
+araçları `mutating` listesine yazılırsa mod/onay kapısına tabi olur.
+
 ## Hız ipuçları (Ollama)
 
 Ollama'yı başlatmadan önce şu ortam değişkenleriyle belirgin hız kazanılır:

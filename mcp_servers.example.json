@@ -1,0 +1,15 @@
+{
+  "_aciklama": "Bu dosyayı 'mcp_servers.json' olarak kopyalayıp düzenle. Kuzgun başlarken buradaki MCP sunucularının araçlarını otomatik ekler. 'mutating' listesi, onay/mod kapısına tabi (değişiklik yapan) araçların adlarıdır.",
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "C:\\Users\\Ahmet Yüceler\\Desktop"],
+      "mutating": ["write_file", "edit_file", "create_directory", "move_file"]
+    },
+    {
+      "name": "github",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
+      "mutating": ["create_issue", "create_pull_request", "push_files"]
+    }
+  ]
+}

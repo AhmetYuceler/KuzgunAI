@@ -7,6 +7,7 @@ from kuzgun.agent import run_turn
 from kuzgun.config import Config, load_config
 from kuzgun.embeddings import OllamaEmbedder
 from kuzgun.memory import Memory, recall_context
+from kuzgun.mcp import load_mcp_servers
 from kuzgun.models import OllamaClient
 from kuzgun.router import classify_complexity, is_code_task
 from kuzgun.teacher import ask_claude
@@ -115,7 +116,14 @@ class KuzgunEngine:
             if coder_client is not None
             else OllamaClient(model=cfg.coder_model, base_url=cfg.ollama_url)
         )
-        self.registry = registry if registry is not None else build_default_registry()
+        if registry is not None:
+            self.registry = registry
+        else:
+            self.registry = build_default_registry()
+            try:
+                load_mcp_servers(self.registry)  # mcp_servers.json varsa araçları ekler
+            except Exception:  # noqa: BLE001
+                pass
         self.messages: list[dict] = self._new_history()
         self._sessions: dict[str, list[dict]] = {}
         self._slock = threading.Lock()

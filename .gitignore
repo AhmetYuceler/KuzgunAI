@@ -6,3 +6,4 @@ data/
 .superpowers/
 *.egg-info/
 benchmark_raporu.md
+mcp_servers.json
