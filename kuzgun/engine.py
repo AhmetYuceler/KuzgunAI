@@ -330,6 +330,16 @@ class KuzgunEngine:
         note = {"role": "system", "content": f"[Önceki konuşmanın özeti]\n{summary}"}
         messages[:] = head + [note] + recent
 
+    def fork_session(self, src_id: str | None, dst_id: str) -> list[dict]:
+        """C10 (/fork): bir oturumun geçmişini yeni bir oturuma DERİN kopyalar. Kopya
+        bağımsızdır (birinde değişiklik diğerini etkilemez). src_id=None → ana konuşma."""
+        import copy
+
+        src = self.messages if src_id is None else self._store.get(src_id)
+        dst = self._store.get(dst_id)
+        dst[:] = copy.deepcopy(src)
+        return dst
+
     def chat(
         self,
         message: str,
@@ -337,31 +347,44 @@ class KuzgunEngine:
         confirm=None,
         session_id: str | None = None,
         images: list[str] | None = None,
+        reminder: str | None = None,
     ) -> str:
         # A4 (bug #10): tur boyunca oturum kilidini tut → aynı oturuma eşzamanlı
         # istekler geçmişi bozmaz. Ayrıca oturumu pinle ki başka bir oturumun
         # eviction'ı bu turu ortada atıp kilidini yok etmesin (reviewer #1).
         if session_id is None:
-            return self._locked_turn(self._default_lock, None, message, mode, confirm, images)
+            return self._locked_turn(
+                self._default_lock, None, message, mode, confirm, images, reminder
+            )
         self._store.pin(session_id)
         try:
             return self._locked_turn(
-                self._store.lock(session_id), session_id, message, mode, confirm, images
+                self._store.lock(session_id), session_id, message, mode, confirm, images, reminder
             )
         finally:
             self._store.unpin(session_id)
 
-    def _locked_turn(self, lock, session_id, message, mode, confirm, images=None) -> str:
+    def _locked_turn(
+        self, lock, session_id, message, mode, confirm, images=None, reminder=None
+    ) -> str:
         with lock:
             messages = self.history(session_id)
             self._sync_notes(messages)
             # A3 (bug #6): turda hata olursa bu noktaya geri sar; sarkan mesaj kalmasın.
             checkpoint = len(messages)
+            # C7: tura-bağlı hatırlatma — model bu turda görür, kalıcı geçmişe girmez.
+            rem = None
+            if reminder:
+                rem = {"role": "system", "content": f"[Hatırlatma] {reminder}"}
+                messages.append(rem)
             try:
-                return self._run_chat(messages, message, mode, confirm, images)
+                result = self._run_chat(messages, message, mode, confirm, images)
             except Exception:
                 del messages[checkpoint:]
                 raise
+            if rem is not None and rem in messages:
+                messages.remove(rem)  # tura özgü: sonraki turlara taşınmaz
+            return result
 
     def _run_chat(self, messages, message, mode, confirm, images=None) -> str:
         if images:
