@@ -11,6 +11,7 @@ dev = ["pytest>=8", "httpx>=0.27"]
 [project.scripts]
 kuzgun = "kuzgun.cli:main"
 kuzgun-server = "kuzgun.server:main"
+kuzgun-client = "kuzgun.client:main"
 
 [build-system]
 requires = ["setuptools>=68"]
