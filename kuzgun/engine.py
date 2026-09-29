@@ -272,17 +272,63 @@ class KuzgunEngine:
             return self.messages
         return self._store.get(session_id)
 
+    def _head_len(self, messages: list[dict]) -> int:
+        """Kırpma/özetlemede korunacak baş uzunluğu: sistem promptu (+ varsa notlar)."""
+        return 2 if len(messages) > 1 and self._is_notes(messages[1]) else 1
+
     def _trim(self, messages: list[dict]) -> None:
+        """Bağlam bütçesini uygular: compaction açıksa eski turları özetler (C6),
+        yoksa eski turları kırpar."""
+        if self.config.compaction:
+            self._compact(messages)
+        else:
+            self._drop_trim(messages)
+
+    def _drop_trim(self, messages: list[dict]) -> None:
         if len(messages) <= self.max_history:
             return
-        head = messages[:1]
-        if self._is_notes(messages[1]):  # kalıcı notlar kırpılmaz
-            head = messages[:2]
+        head = messages[: self._head_len(messages)]
         tail = messages[-(self.max_history - len(head)) :]
         # Kuyruk bir 'user' mesajıyla başlasın — sarkan tool/assistant kalmasın.
         while tail and tail[0].get("role") != "user":
             tail.pop(0)
         messages[:] = head + tail
+
+    def _summarize_messages(self, msgs: list[dict]) -> str:
+        convo = "\n".join(f"{m.get('role')}: {m.get('content','')}" for m in msgs)
+        prompt = [
+            {"role": "system", "content": "Aşağıdaki konuşmayı Türkçe, kısa ve olgusal "
+             "özetle (önemli kararlar, veriler, tercihler). Yalnızca özet yaz."},
+            {"role": "user", "content": convo},
+        ]
+        try:
+            return (self.client.chat(prompt, []).text or "").strip()
+        except Exception as exc:  # noqa: BLE001 — özet alınamazsa boş
+            log.warning("compaction özeti alınamadı: %s", exc)
+            return ""
+
+    def _compact(self, messages: list[dict]) -> None:
+        """C6: bütçe aşılınca baştaki sistem/notları koru, ORTADAKİ eski turları tek
+        bir özet sistem-notuna indir, SON turları olduğu gibi bırak. Olgular zaten
+        SQLite hafızada (chat her turu kaydeder) → özet detay kaybetse de bilgi durur."""
+        if len(messages) <= self.max_history:
+            return
+        head_len = self._head_len(messages)
+        head = messages[:head_len]
+        keep = max(2, self.max_history - head_len - 1)  # özet için 1 yer ayır
+        recent = messages[-keep:]
+        while recent and recent[0].get("role") != "user":
+            recent.pop(0)
+        middle = messages[head_len : len(messages) - len(recent)]
+        if not middle:  # özetlenecek orta yok → kırpmaya düş
+            self._drop_trim(messages)
+            return
+        summary = self._summarize_messages(middle)
+        if not summary:
+            self._drop_trim(messages)
+            return
+        note = {"role": "system", "content": f"[Önceki konuşmanın özeti]\n{summary}"}
+        messages[:] = head + [note] + recent
 
     def chat(
         self,
