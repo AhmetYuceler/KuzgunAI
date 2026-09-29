@@ -151,3 +151,23 @@ def test_interactive_loop_ends_when_handle_sets_quit():
         # EOF gönderilmiyor: döngü quit ile kendiliğinden bitmeli (asılı kalmamalı)
         asyncio.run(asyncio.wait_for(run_interactive(state, console, handle), timeout=5))
     assert handled == ["/cikis"]
+
+
+def test_set_title_writes_osc_sequence():
+    import io
+
+    from kuzgun.ui import set_title
+
+    out = io.StringIO()
+    set_title("Kuzgun — renk testi", file=out)
+    assert out.getvalue() == "\x1b]0;Kuzgun — renk testi\x07"
+
+
+def test_set_title_strips_control_chars():
+    import io
+
+    from kuzgun.ui import set_title
+
+    out = io.StringIO()
+    set_title("a\x07b\x1bc\nd", file=out)
+    assert out.getvalue() == "\x1b]0;abcd\x07"

@@ -217,3 +217,12 @@ def test_format_session_list_numbers_and_titles():
     out = format_session_list([{"id": "a", "name": "isim", "title": "baslik", "updated": 0, "turns": 3}])
     assert out.startswith(" 1. isim") and "baslik" in out and "3 tur" in out
     assert "yok" in format_session_list([]).lower()
+
+
+def test_session_title_prefers_name_then_first_message():
+    from kuzgun.cli import session_title
+
+    assert session_title({"name": "renk-testi", "title": "benim en sevdigim"}) == "renk-testi"
+    assert session_title({"name": "", "title": "benim en sevdigim renk mor"}) == "benim en sevdigim renk mor"
+    assert session_title({"name": "", "title": "x" * 80}) == "x" * 47 + "..."
+    assert session_title({}) == "Kuzgun"

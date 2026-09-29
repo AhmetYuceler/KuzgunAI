@@ -93,6 +93,16 @@ def format_session_list(metas: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def session_title(meta: dict, limit: int = 50) -> str:
+    """Sekme başlığı: oturum adı > ilk mesaj > 'Kuzgun' (Claude Code'un başlığı gibi)."""
+    text = (meta.get("name") or meta.get("title") or "").strip()
+    if not text:
+        return "Kuzgun"
+    if len(text) > limit:
+        return text[: limit - 3] + "..."
+    return text
+
+
 def resume_session(engine, archive, arg: str, state: dict) -> str:
     """/resume [ad|id|no]: oturumu geri yükler (engine.messages değişir).
 
@@ -124,6 +134,9 @@ def resume_session(engine, archive, arg: str, state: dict) -> str:
     if meta.get("mode") in MODES:
         state["mode"] = meta["mode"]
     etiket = meta.get("name") or title_for(engine.messages)
+    from kuzgun import ui
+
+    ui.set_title(session_title(meta))
     return (
         f"Oturuma dönüldü: {etiket} ({meta.get('turns', 0)} tur). "
         f"Son konuşma:\n{format_history(engine.messages, n=4)}"
@@ -199,6 +212,7 @@ def main(argv=None) -> None:
         "images_dir": images_dir,
         "session_id": archive.new_id(),
     }
+    ui.set_title("Kuzgun")
     console.print()
     console.print(
         ui.render_header(
@@ -212,6 +226,8 @@ def main(argv=None) -> None:
             archive.save(state["session_id"], engine.messages, mode=state["mode"], cwd=os.getcwd())
             if args.name:
                 archive.rename(state["session_id"], args.name)
+            # Sekme başlığı konuşmayı yansıtsın (ad varsa ad, yoksa ilk mesaj).
+            ui.set_title(session_title(archive.load(state["session_id"])[1]))
         except Exception as exc:  # noqa: BLE001 — arşiv hatası sohbeti durdurmasın
             console.print(f"[dim]arşiv uyarısı: {exc}[/]")
 
@@ -243,6 +259,7 @@ def main(argv=None) -> None:
             ad = user[len("/rename ") :].strip()
             _save()
             archive.rename(state["session_id"], ad)
+            ui.set_title(ad)
             ui.print_note(console, f"Oturum adı: {ad}")
             return
         if user == "/notlar":

@@ -221,6 +221,20 @@ def make_session(state: dict, **session_kwargs):
     )
 
 
+def set_title(title: str, file=None) -> None:
+    """Terminal sekme/pencere başlığını ayarlar (OSC 0; Windows Terminal, xterm…).
+    Claude Code gibi: başlık konuşmanın adı/ilk mesajı olur."""
+    import re
+
+    clean = re.sub(r"[\x00-\x1f\x7f]", "", title)
+    out = file if file is not None else sys.__stdout__  # patch_stdout proxysini atla
+    try:
+        out.write(f"\x1b]0;{clean}\x07")
+        out.flush()
+    except Exception:  # noqa: BLE001 — başlık kozmetik; hata sohbeti durdurmasın
+        pass
+
+
 def print_rule(console) -> None:
     console.print("─" * max(console.width - 1, 20), style="bright_black")
 
