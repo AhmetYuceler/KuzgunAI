@@ -17,6 +17,22 @@ class AssistantMessage:
     tool_calls: list[ToolCall] = field(default_factory=list)
 
 
+def _parse_arguments(raw: str | None) -> dict:
+    """Model'in ürettiği araç argümanı JSON'unu güvenle sözlüğe çevirir.
+
+    Küçük modeller bazen bozuk/eksik JSON üretir; böyle bir durumda tur
+    çökmesin diye boş sözlük döneriz (ToolRegistry eksik argümanı zaten
+    'Error: ...' olarak modele geri bildirir).
+    """
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 class FakeModelClient:
     """Testler için: önceden yazılmış mesajları sırayla döndürür."""
 
@@ -53,8 +69,11 @@ class OllamaClient:
         m = resp.choices[0].message
         tool_calls = []
         for tc in (m.tool_calls or []):
-            args = tc.function.arguments or "{}"
             tool_calls.append(
-                ToolCall(id=tc.id, name=tc.function.name, arguments=json.loads(args))
+                ToolCall(
+                    id=tc.id,
+                    name=tc.function.name,
+                    arguments=_parse_arguments(tc.function.arguments),
+                )
             )
         return AssistantMessage(text=m.content, tool_calls=tool_calls)
