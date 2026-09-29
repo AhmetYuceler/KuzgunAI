@@ -18,5 +18,11 @@ def test_timeout_terminates_promptly_and_returns_error():
     assert elapsed < 10, f"zaman asimi surec agacini oldurmedi; {elapsed:.1f}sn surdu"
 
 
+def test_stderr_on_success_is_included():
+    # Basarili (exit 0) ama stderr'e yazan komut; cikti kaybolmamali.
+    out = run_command("echo stderrmesaji 1>&2")
+    assert "stderrmesaji" in out
+
+
 def test_schema_name():
     assert RUN_COMMAND_SCHEMA["function"]["name"] == "run_command"

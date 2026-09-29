@@ -59,7 +59,11 @@ def run_command(command: str, timeout: int = 30) -> str:
         except subprocess.TimeoutExpired:
             pass
         return f"Error: komut {timeout} saniyede zaman aşımına uğradı."
-    out = stdout or ""
+    parts = []
+    if (stdout or "").strip():
+        parts.append(stdout.strip())
+    if (stderr or "").strip():
+        parts.append(f"[stderr]\n{stderr.strip()}")
     if proc.returncode != 0:
-        out += f"\n[çıkış kodu {proc.returncode}]\n{stderr or ''}"
-    return out.strip()
+        parts.append(f"[çıkış kodu {proc.returncode}]")
+    return "\n".join(parts)
