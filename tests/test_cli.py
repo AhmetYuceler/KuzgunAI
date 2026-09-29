@@ -30,3 +30,22 @@ def test_slash_invalid_mode_keeps_state():
 
 def test_non_slash_returns_none():
     assert handle_slash("merhaba", {"mode": "normal"}) is None
+
+
+def test_registry_has_web_tools():
+    names = [s["function"]["name"] for s in build_default_registry().schemas()]
+    assert "web_search" in names
+    assert "fetch_url" in names
+
+
+def test_web_tools_are_read_only():
+    reg = build_default_registry()
+    assert reg.is_mutating("web_search") is False
+    assert reg.is_mutating("fetch_url") is False
+
+
+def test_system_prompt_warns_about_web():
+    # Not: Türkçe İ nedeniyle .lower() güvensiz; birebir substring kontrol ediyoruz.
+    from kuzgun.cli import SYSTEM_PROMPT
+
+    assert "GÜVENİLMEZ" in SYSTEM_PROMPT
