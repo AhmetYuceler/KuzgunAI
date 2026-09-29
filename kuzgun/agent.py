@@ -94,6 +94,12 @@ def run_turn(
 ) -> str:
     """Ajan döngüsü. `escalate` verilirse, model döngüye girer / araçlar üst üste
     hata verir / max_steps aşılırsa otomatik olarak uzmana (Claude) devreder."""
+    def _escalate_and_record() -> str:
+        # A3 (bug #5): devredilen cevabı geçmişe de yaz ki sonraki turda kaybolmasın.
+        reply = escalate(_last_user_text(messages))
+        messages.append({"role": "assistant", "content": reply})
+        return reply
+
     last_sig = None
     repeat = 0
     err_streak = 0
@@ -129,8 +135,8 @@ def run_turn(
         err_streak = err_streak + 1 if step_error else 0
         # Devir tetikleyicileri: döngü ya da üst üste araç hatası.
         if escalate is not None and (repeat >= 2 or err_streak >= 2):
-            return escalate(_last_user_text(messages))
+            return _escalate_and_record()
     # max_steps aşıldı: escalate varsa devret, yoksa hata ver.
     if escalate is not None:
-        return escalate(_last_user_text(messages))
+        return _escalate_and_record()
     raise RuntimeError(f"max_steps ({max_steps}) aşıldı; model döngüde kaldı.")

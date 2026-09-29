@@ -256,6 +256,15 @@ class KuzgunEngine:
     ) -> str:
         messages = self.history(session_id)
         self._sync_notes(messages)
+        # A3 (bug #6): turda hata olursa bu noktaya geri sar; yarım/sarkan mesaj kalmasın.
+        checkpoint = len(messages)
+        try:
+            return self._run_chat(messages, message, mode, confirm)
+        except Exception:
+            del messages[checkpoint:]
+            raise
+
+    def _run_chat(self, messages, message, mode, confirm) -> str:
         cb = confirm if confirm is not None else self.confirm
         esc = self._escalate if self._escalate is not None else self._do_escalate
         # Deterministik niyet kısayolu: net medya komutlarını modele bırakma.

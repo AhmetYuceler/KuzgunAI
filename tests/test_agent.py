@@ -98,6 +98,17 @@ def test_escalates_on_max_steps_when_escalate_given():
     assert out == "DEVREDILDI"
 
 
+def test_escalated_reply_is_appended_to_history():
+    # A3 (bug #5): run_turn uzmana devrederse, dönen cevap geçmişe de yazılmalı;
+    # aksi halde bir sonraki tur bağlamında asistanın cevabı eksik kalır.
+    loop_msg = AssistantMessage(text=None, tool_calls=[ToolCall("1", "echo", {"text": "x"})])
+    client = FakeModelClient([loop_msg] * 20)
+    messages = [{"role": "user", "content": "zor soru"}]
+    out = run_turn(client, messages, _registry_with_echo(), escalate=lambda q: "UZMAN CEVABI")
+    assert out == "UZMAN CEVABI"
+    assert messages[-1] == {"role": "assistant", "content": "UZMAN CEVABI"}
+
+
 def test_extract_wellformed_json_tool_call():
     from kuzgun.agent import extract_tool_calls_from_text
 
