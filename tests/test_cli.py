@@ -233,3 +233,25 @@ def test_command_help_covers_all_commands():
 
     assert set(COMMAND_HELP) == set(COMMANDS)
     assert all(COMMAND_HELP[c] for c in COMMANDS)
+
+
+def test_resume_lists_current_folder_first_and_all_on_request(tmp_path):
+    from kuzgun.archive import SessionArchive
+    from kuzgun.cli import resume_session
+
+    a = SessionArchive(str(tmp_path))
+    here, other = a.new_id(), a.new_id()
+    a.save(here, [{"role": "user", "content": "bu klasör"}, {"role": "assistant", "content": "a"}], cwd="C:/p1")
+    a.save(other, [{"role": "user", "content": "başka klasör"}, {"role": "assistant", "content": "b"}], cwd="C:/p2")
+
+    class Eng:
+        messages = [{"role": "system", "content": "s"}]
+
+    state = {"cwd": "C:/p1"}
+    out = resume_session(Eng(), a, "", state)
+    assert "bu klasör" in out and "başka klasör" not in out  # bu klasörün oturumları
+    assert "hepsi" in out  # ipucu: /resume hepsi
+    out = resume_session(Eng(), a, "hepsi", state)
+    assert "bu klasör" in out and "başka klasör" in out
+    resume_session(Eng(), a, "1", state)  # numara, bu klasörün listesine göre
+    assert state["session_id"] == here

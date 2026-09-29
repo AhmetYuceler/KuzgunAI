@@ -63,3 +63,16 @@ def test_title_for_uses_first_user_message_trimmed():
     assert title_for([{"role": "system", "content": "s"}, {"role": "user", "content": long}]) == "a" * 57 + "..."
     assert title_for([{"role": "user", "content": "soru\n[ekli resim: x.png]"}]) == "soru"
     assert title_for([]) == "(boş)"
+
+
+def test_list_filters_by_cwd_and_all(tmp_path):
+    a = SessionArchive(str(tmp_path))
+    s1, s2 = a.new_id(), a.new_id()
+    a.save(s1, MSGS, cwd="C:/proje-a")
+    time.sleep(0.01)
+    a.save(s2, MSGS, cwd="C:/proje-b")
+    assert [m["id"] for m in a.list(cwd="C:/proje-a")] == [s1]
+    assert [m["id"] for m in a.list(cwd="c:\proje-a\\")] == [s1]  # büyük/küçük harf, eğik çizgi farkı önemsiz
+    assert [m["id"] for m in a.list()] == [s2, s1]  # cwd verilmezse hepsi
+    assert a.latest(cwd="C:/proje-a")["id"] == s1
+    assert a.latest(cwd="C:/yok") is None

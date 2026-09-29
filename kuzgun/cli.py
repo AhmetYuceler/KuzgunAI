@@ -132,13 +132,20 @@ def resume_session(engine, archive, arg: str, state: dict) -> str:
     komutla yapılır). Sistem promptu GÜNCEL tutulur; yalnız konuşma geri gelir."""
     from kuzgun.archive import title_for
 
-    metas = archive.list()
+    key = (arg or "").strip()
+    cwd = state.get("cwd")
+    # Claude Code gibi proje bazlı: önce bu klasörün oturumları; '/resume hepsi' tümü.
+    metas = archive.list(cwd=cwd) if cwd and key != "hepsi" else []
+    scope = "Bu klasörün oturumları"
+    if not metas:
+        metas = archive.list()
+        scope = "Tüm oturumlar"
     if not metas:
         return "Kayıtlı oturum yok."
-    key = (arg or "").strip()
-    if not key:
+    if not key or key == "hepsi":
+        ipucu = " · diğer klasörler için: /resume hepsi" if scope.startswith("Bu") else ""
         return (
-            "Kayıtlı oturumlar (dönmek için: /resume <no> ya da /resume <ad>):\n"
+            f"{scope} (dönmek için: /resume <no> ya da /resume <ad>{ipucu}):\n"
             + format_session_list(metas)
         )
     if key.isdigit() and 1 <= int(key) <= len(metas):
@@ -232,6 +239,7 @@ def main(argv=None) -> None:
         "quit": False,
         "images_dir": images_dir,
         "session_id": archive.new_id(),
+        "cwd": os.getcwd(),  # /resume ve --continue bu klasörün oturumlarını önceler
     }
     ui.set_title("Kuzgun")
     console.print()
@@ -256,7 +264,7 @@ def main(argv=None) -> None:
     if args.cont or args.resume is not None:
         key = args.resume or ""
         if args.cont:
-            son = archive.latest()
+            son = archive.latest(cwd=os.getcwd()) or archive.latest()
             key = son["id"] if son else "yok"
         ui.print_note(console, resume_session(engine, archive, key, state))
 
@@ -339,9 +347,9 @@ def main(argv=None) -> None:
 
         def _resume_choices():
             # '/resume ' sonrası: ad (varsa) ya da numara; yanında ilk mesaj
-            return [
-                (m["name"] or str(i), m.get("title", ""))
-                for i, m in enumerate(archive.list(), 1)
+            metas = archive.list(cwd=os.getcwd()) or archive.list()
+            return [(m["name"] or str(i), m.get("title", "")) for i, m in enumerate(metas, 1)] + [
+                ("hepsi", "diğer klasörlerdeki oturumlar")
             ]
 
         asyncio.run(

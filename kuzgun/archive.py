@@ -78,8 +78,14 @@ class SessionArchive:
         messages = data.pop("messages", [])
         return messages, data
 
-    def list(self, limit: int = 15) -> list[dict]:
-        """Metaveriler, en yeni önce; kullanıcı mesajı olmayan (boş) oturumlar atlanır."""
+    @staticmethod
+    def _same_dir(a: str, b: str) -> bool:
+        norm = lambda p: os.path.normcase(os.path.normpath(p))  # noqa: E731
+        return norm(a) == norm(b)
+
+    def list(self, limit: int = 15, cwd: str | None = None) -> list[dict]:
+        """Metaveriler, en yeni önce; kullanıcı mesajı olmayan (boş) oturumlar atlanır.
+        `cwd` verilirse yalnız o klasörde açılmış oturumlar (Claude Code proje bazlı)."""
         metas = []
         for fn in os.listdir(self.dir):
             if not fn.endswith(".json"):
@@ -90,13 +96,15 @@ class SessionArchive:
                 continue
             if d.get("turns", 0) == 0:
                 continue
+            if cwd is not None and not self._same_dir(d.get("cwd", ""), cwd):
+                continue
             d.pop("messages", None)
             metas.append(d)
         metas.sort(key=lambda d: d.get("updated", 0), reverse=True)
         return metas[:limit]
 
-    def latest(self) -> dict | None:
-        lst = self.list(limit=1)
+    def latest(self, cwd: str | None = None) -> dict | None:
+        lst = self.list(limit=1, cwd=cwd)
         return lst[0] if lst else None
 
     def find(self, key: str) -> dict | None:
