@@ -21,6 +21,7 @@ kuzgun = "kuzgun.cli:main"
 kuzgun-server = "kuzgun.server:main"
 kuzgun-client = "kuzgun.client:main"
 kuzgun-bench = "kuzgun.bench:main"
+kuzgun-doctor = "kuzgun.doctor:main"
 
 [build-system]
 requires = ["setuptools>=68"]
