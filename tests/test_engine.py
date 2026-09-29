@@ -201,6 +201,22 @@ def test_no_reflect_when_code_valid():
     assert "x = 1" in eng.chat("python ile x'e 1 ata")
 
 
+def test_engine_handles_media_intent_directly(monkeypatch):
+    import kuzgun.engine as eng_mod
+
+    calls = []
+    monkeypatch.setattr(eng_mod, "media_control", lambda action: calls.append(action) or f"Medya: {action}")
+    eng = KuzgunEngine(
+        client=FakeModelClient([]),  # model çağrılırsa IndexError
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    out = eng.chat("spotifydan müziği değiştir", mode="normal")
+    assert calls == ["next"]  # doğrudan media_control, model kullanılmadı
+    assert "Medya" in out
+
+
 def test_history_is_trimmed():
     eng = KuzgunEngine(
         client=FakeModelClient([AssistantMessage(text="x", tool_calls=[])] * 200),

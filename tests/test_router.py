@@ -1,4 +1,30 @@
-from kuzgun.router import classify_complexity, is_code_task
+from kuzgun.router import (
+    classify_complexity,
+    detect_media_intent,
+    detect_weather_intent,
+    is_code_task,
+)
+
+
+def test_detect_weather_intent():
+    assert detect_weather_intent("bugün hava durumu nedir")
+    assert detect_weather_intent("dışarıda hava nasıl")
+    assert detect_weather_intent("kaç derece bugün")
+    assert not detect_weather_intent("bana bir şarkı çal")
+    assert not detect_weather_intent("Fransa'nın başkenti")
+
+
+def test_detect_media_intent():
+    assert detect_media_intent("spotifydan müziği değiştir") == "next"
+    assert detect_media_intent("sonraki şarkıya geç") == "next"
+    assert detect_media_intent("önceki şarkı") == "previous"
+    assert detect_media_intent("müziği durdur") == "playpause"
+    assert detect_media_intent("sesi aç") == "volup"
+
+
+def test_detect_media_intent_none_for_normal():
+    assert detect_media_intent("Fransa'nın başkenti neresi") is None
+    assert detect_media_intent("bana bir fonksiyon yaz") is None
 
 
 def test_hard_tasks_classified_zor():
