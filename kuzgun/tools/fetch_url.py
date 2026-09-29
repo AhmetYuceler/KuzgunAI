@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import socket
 import urllib.error
@@ -35,12 +36,20 @@ FETCH_URL_SCHEMA = {
 }
 
 
-def _is_safe_host(host: str | None) -> bool:
-    """Host, herkese açık bir adrese mi çözümleniyor? (SSRF koruması)
+def _addr_is_public(addr) -> bool:
+    """Adres herkese açık mı? (özel/loopback/link-local/reserved/multicast değil)"""
+    return not (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    )
 
-    localhost, özel ağ (10./192.168./172.16-31.), loopback, link-local
-    (169.254., bulut metadata dahil), reserved/multicast adresler engellenir.
-    """
+
+def _is_safe_host(host: str | None) -> bool:
+    """Host, herkese açık bir adrese mi çözümleniyor? (SSRF ön-kontrolü)"""
     if not host:
         return False
     try:
@@ -50,21 +59,54 @@ def _is_safe_host(host: str | None) -> bool:
     if not infos:
         return False
     for info in infos:
-        ip_str = info[4][0]
         try:
-            addr = ipaddress.ip_address(ip_str)
+            addr = ipaddress.ip_address(info[4][0])
         except ValueError:
             return False
-        if (
-            addr.is_private
-            or addr.is_loopback
-            or addr.is_link_local
-            or addr.is_reserved
-            or addr.is_multicast
-            or addr.is_unspecified
-        ):
+        if not _addr_is_public(addr):
             return False
     return True
+
+
+def _check_peer(sock) -> None:
+    """Bağlantı KURULDUKTAN sonra gerçek peer IP'sini doğrular (DNS-rebinding/TOCTOU)."""
+    try:
+        ip = sock.getpeername()[0]
+        addr = ipaddress.ip_address(ip)
+    except Exception:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        raise ValueError("engellenen adres (peer çözümlenemedi)")
+    if not _addr_is_public(addr):
+        try:
+            sock.close()
+        except Exception:
+            pass
+        raise ValueError("engellenen adres (bağlantı sonrası yerel/özel ağ)")
+
+
+class _GuardedHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        super().connect()
+        _check_peer(self.sock)
+
+
+class _GuardedHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        super().connect()
+        _check_peer(self.sock)
+
+
+class _GuardedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_GuardedHTTPConnection, req)
+
+
+class _GuardedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_GuardedHTTPSConnection, req)
 
 
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -80,9 +122,12 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 def _http_get(url: str) -> str:
+    # Ön-kontrol (hızlı ret) + bağlantı sonrası peer doğrulama (TOCTOU kapatma).
     if not _is_safe_host(urlparse(url).hostname):
         raise ValueError("engellenen adres (yerel/özel ağ)")
-    opener = urllib.request.build_opener(_SafeRedirectHandler)
+    opener = urllib.request.build_opener(
+        _GuardedHTTPHandler, _GuardedHTTPSHandler, _SafeRedirectHandler
+    )
     req = urllib.request.Request(url, headers={"User-Agent": "Kuzgun/0.1"})
     with opener.open(req, timeout=15) as resp:
         raw = resp.read(2_000_000)  # 2 MB üst sınır

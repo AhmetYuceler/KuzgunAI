@@ -4,7 +4,7 @@ from kuzgun.config import Config
 from kuzgun.embeddings import FakeEmbedder
 from kuzgun.engine import KuzgunEngine
 from kuzgun.memory import Memory
-from kuzgun.models import AssistantMessage, FakeModelClient
+from kuzgun.models import AssistantMessage, FakeModelClient, ToolCall
 from kuzgun.server import create_app
 from kuzgun.tools import ToolRegistry
 
@@ -61,6 +61,34 @@ def test_memory_persists_through_server_threadpool():
     r = c.post("/chat", json={"message": "selam"})
     assert r.status_code == 200
     assert eng.memory.count() == 1  # threadpool'dan kaydedildi (eskiden sessizce 0'dı)
+
+
+def test_server_clamps_otonom_to_prevent_rce():
+    # İstemci 'otonom' gönderse bile sunucu değişiklik yapan aracı ÇALIŞTIRMAMALI.
+    from kuzgun.memory import Memory
+
+    reg = ToolRegistry()
+    calls = []
+    schema = {
+        "type": "function",
+        "function": {"name": "yaz", "parameters": {"type": "object", "properties": {}}},
+    }
+    reg.register(schema, lambda: calls.append("x") or "ok", mutating=True)
+    eng = KuzgunEngine(
+        client=FakeModelClient(
+            [
+                AssistantMessage(text=None, tool_calls=[ToolCall("1", "yaz", {})]),
+                AssistantMessage(text="bitti", tool_calls=[]),
+            ]
+        ),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=reg,
+    )
+    c = TestClient(create_app(eng, config=Config()), base_url="http://127.0.0.1")
+    r = c.post("/chat", json={"message": "yaz bir sey", "mode": "otonom"})
+    assert r.status_code == 200
+    assert calls == []  # RCE önlendi: otonom istemciden gelse bile mutasyon koşmadı
 
 
 def test_token_required_when_configured():

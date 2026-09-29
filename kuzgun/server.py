@@ -41,7 +41,13 @@ def create_app(engine: KuzgunEngine | None = None, config: Config | None = None)
 
     @app.post("/chat")
     def chat(req: ChatRequest, _: None = Depends(require_auth)) -> dict:
-        return {"reply": engine.chat(req.message, mode=req.mode, session_id=req.session)}
+        # GÜVENLİK: istemciden gelen mod yalnız plan/normal olabilir. 'otonom'
+        # (onaysız mutasyon = uzaktan kod çalıştırma riski) HTTP üzerinden yasak;
+        # gerçek mutasyon yerel etkileşimli CLI'da yapılır.
+        safe_mode = req.mode if req.mode in ("plan", "normal") else "normal"
+        return {
+            "reply": engine.chat(req.message, mode=safe_mode, session_id=req.session)
+        }
 
     return app
 

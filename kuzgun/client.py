@@ -36,10 +36,9 @@ def main() -> None:  # kuzgun-client giriş noktası: ince terminal istemcisi
 
     base = sys.argv[1] if len(sys.argv) > 1 else load_config().engine_url
     mode = "normal"
-    print(
-        f"Kuzgun istemcisi -> {base}  (mod: {mode}; "
-        "/mod <plan|normal|otonom>, /cikis)"
-    )
+    # Not: HTTP üzerinden yalnız plan/normal geçerli; 'otonom' (onaysız mutasyon)
+    # güvenlik nedeniyle sunucuda yasak, yerel `kuzgun` CLI'da yapılır.
+    print(f"Kuzgun istemcisi -> {base}  (mod: {mode}; /mod <plan|normal>, /cikis)")
     while True:
         try:
             user = input(f"\n[{mode}] sen> ").strip()
@@ -51,11 +50,11 @@ def main() -> None:  # kuzgun-client giriş noktası: ince terminal istemcisi
             continue
         if user.startswith("/mod"):
             parts = user.split()
-            if len(parts) > 1 and parts[1] in ("plan", "normal", "otonom"):
+            if len(parts) > 1 and parts[1] in ("plan", "normal"):
                 mode = parts[1]
                 print(f"Mod değişti: {mode}")
             else:
-                print("Kullanım: /mod <plan|normal|otonom>")
+                print("Kullanım: /mod <plan|normal>  (otonom yalnız yerel CLI'da)")
             continue
         print("\nkuzgun>", remote_chat(user, base_url=base, mode=mode))
 
