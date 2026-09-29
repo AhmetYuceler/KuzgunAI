@@ -217,6 +217,25 @@ def test_engine_handles_media_intent_directly(monkeypatch):
     assert "Medya" in out
 
 
+def test_run_agents_decomposes_and_synthesizes():
+    client = FakeModelClient(
+        [
+            AssistantMessage(text='["ilk is", "ikinci is"]', tool_calls=[]),  # plan
+            AssistantMessage(text="ilk sonuc", tool_calls=[]),  # işçi-ajan 1
+            AssistantMessage(text="ikinci sonuc", tool_calls=[]),  # işçi-ajan 2
+            AssistantMessage(text="birlesik cevap", tool_calls=[]),  # sentez
+        ]
+    )
+    eng = KuzgunEngine(
+        client=client,
+        coder_client=client,
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    assert eng.run_agents("iki isi de yap") == "birlesik cevap"
+
+
 def test_history_is_trimmed():
     eng = KuzgunEngine(
         client=FakeModelClient([AssistantMessage(text="x", tool_calls=[])] * 200),

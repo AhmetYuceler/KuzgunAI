@@ -22,7 +22,7 @@ def handle_slash(line: str, state: dict) -> str | None:
     if cmd == "/yardim":
         return (
             "Komutlar: /mod <plan|normal|otonom>, /claude <soru> (uzmana danış), "
-            "/gecmis, /yardim, /cikis"
+            "/ajanlar <görev> (çok adımlı işi böl-yap), /gecmis, /yardim, /cikis"
         )
     if cmd == "/mod":
         if len(parts) < 2:
@@ -81,6 +81,16 @@ def main() -> None:
             continue
         if user == "/gecmis":
             console.print(Panel(format_history(engine.messages), title="Geçmiş", border_style="dim"))
+            continue
+        if user.startswith("/ajanlar "):
+            gorev = user[len("/ajanlar ") :].strip()
+            console.print("[dim]ajanlar çalışıyor: görev bölünüyor ve tek tek yapılıyor...[/]")
+            try:
+                cevap = engine.run_agents(gorev, mode=state["mode"], confirm=_confirm)
+            except Exception as exc:
+                cevap = f"[hata] {exc}"
+            console.print("[bold green]ajanlar>[/]")
+            console.print(Markdown(cevap))
             continue
         if user.startswith("/claude "):
             soru = user[len("/claude ") :].strip()

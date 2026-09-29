@@ -9,6 +9,7 @@ from kuzgun.embeddings import OllamaEmbedder
 from kuzgun.memory import Memory, recall_context
 from kuzgun.mcp import load_mcp_servers
 from kuzgun.models import OllamaClient
+from kuzgun.orchestrator import _plan_with_model, _synth_with_model, orchestrate
 from kuzgun.router import (
     classify_complexity,
     detect_media_intent,
@@ -164,6 +165,23 @@ class KuzgunEngine:
                 client, messages, self.registry, mode=mode, confirm=confirm, escalate=escalate
             )
         return reply
+
+    def run_agents(self, task: str, mode: str = "normal", confirm=None) -> str:
+        """Görevi alt-görevlere böler, HER birini izole bir işçi-ajanla (ayrı oturum)
+        yapar, sonuçları birleştirir. Çok görevi tek tek yapar, hiçbirini atlamaz."""
+        import uuid
+
+        def plan_fn(t):
+            return _plan_with_model(t, self.client)
+
+        def worker_fn(subtask):
+            sid = "ajan-" + uuid.uuid4().hex[:8]  # her ajan izole bağlam
+            return self.chat(subtask, mode=mode, confirm=confirm, session_id=sid)
+
+        def synth_fn(t, results):
+            return _synth_with_model(t, results, self.client)
+
+        return orchestrate(task, plan_fn, worker_fn, synth_fn)
 
     def _do_escalate(self, question: str) -> str:
         """Varsayılan devretme: yerel model takıldı, danışman Claude'a sor."""
