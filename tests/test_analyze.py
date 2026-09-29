@@ -126,3 +126,17 @@ def test_align_notes_fixes_template_lines_and_drops_junk():
     assert _align_notes(["- a/x.py: bir", "- a/y.py: iki", "- Genel: fazla"], paths) == [
         "- a/x.py: bir", "- a/y.py: iki"
     ]
+
+
+def test_chunks_skip_files_without_signatures(tmp_path):
+    _make_project(tmp_path)
+    chunks = build_chunks(scan_project(str(tmp_path)))
+    joined = "\n".join(chunks)
+    assert "### ornek/cli.py" in joined and "### ornek/__init__.py" not in joined
+
+
+def test_align_notes_strips_cjk_garbage():
+    from kuzgun.analyze import _align_notes
+
+    out = _align_notes(["- a.py: giriş noktası登记验证已过期，请点击"], ["a.py"])
+    assert out == ["- a.py: giriş noktası"]
