@@ -44,3 +44,25 @@ def test_persists_to_file(tmp_path):
     e = FakeEmbedder()
     Memory(db).add("merhaba", "selam", e)
     assert Memory(db).count() == 1  # aynı dosyayı yeniden aç
+
+
+def test_works_across_threads(tmp_path):
+    # Sunucu (FastAPI) yolunda add/search farklı bir thread'de koşar; çökmemeli.
+    import threading
+
+    m = Memory(str(tmp_path / "t.db"))
+    e = FakeEmbedder()
+    errors = []
+
+    def worker():
+        try:
+            m.add("soru", "cevap", e)
+            m.search("soru", e, k=1)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join()
+    assert errors == [], f"thread hatası: {errors}"
+    assert m.count() == 1

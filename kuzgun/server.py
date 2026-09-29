@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -11,6 +13,7 @@ from kuzgun.engine import KuzgunEngine
 class ChatRequest(BaseModel):
     message: str
     mode: str = "normal"
+    session: str = "default"
 
 
 def create_app(engine: KuzgunEngine | None = None, config: Config | None = None) -> FastAPI:
@@ -19,13 +22,18 @@ def create_app(engine: KuzgunEngine | None = None, config: Config | None = None)
     app = FastAPI(title="Kuzgun Motoru")
 
     # DNS-rebinding koruması: yalnızca izinli Host başlıklarına yanıt ver.
-    allowed = [h.strip() for h in cfg.allowed_hosts.split(",") if h.strip()] or ["*"]
+    # Boşsa güvenli varsayılana dön (asla '*'a düşme).
+    allowed = [h.strip() for h in cfg.allowed_hosts.split(",") if h.strip()]
+    if not allowed:
+        allowed = ["127.0.0.1", "localhost"]
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed)
 
     def require_auth(authorization: str | None = Header(default=None)) -> None:
         # Token ayarlıysa bearer token zorunlu (uzak erişim için). Boşsa yalnız yerel.
-        if cfg.token and authorization != f"Bearer {cfg.token}":
-            raise HTTPException(status_code=401, detail="yetkisiz")
+        if cfg.token:
+            expected = f"Bearer {cfg.token}"
+            if not authorization or not secrets.compare_digest(authorization, expected):
+                raise HTTPException(status_code=401, detail="yetkisiz")
 
     @app.get("/health")
     def health() -> dict:
@@ -33,7 +41,7 @@ def create_app(engine: KuzgunEngine | None = None, config: Config | None = None)
 
     @app.post("/chat")
     def chat(req: ChatRequest, _: None = Depends(require_auth)) -> dict:
-        return {"reply": engine.chat(req.message, mode=req.mode)}
+        return {"reply": engine.chat(req.message, mode=req.mode, session_id=req.session)}
 
     return app
 

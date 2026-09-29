@@ -47,6 +47,22 @@ def test_rejects_untrusted_host():
     assert c.get("/health").status_code == 400
 
 
+def test_memory_persists_through_server_threadpool():
+    # C1 regresyon: sunucu isteği iş parçacığından koşar; hafıza gerçekten kaydetmeli.
+    from kuzgun.memory import Memory
+
+    eng = KuzgunEngine(
+        client=FakeModelClient([AssistantMessage(text="merhaba", tool_calls=[])] * 10),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    c = TestClient(create_app(eng, config=Config()), base_url="http://127.0.0.1")
+    r = c.post("/chat", json={"message": "selam"})
+    assert r.status_code == 200
+    assert eng.memory.count() == 1  # threadpool'dan kaydedildi (eskiden sessizce 0'dı)
+
+
 def test_token_required_when_configured():
     c = _client(config=Config(token="gizli"))
     # token yok -> 401

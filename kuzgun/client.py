@@ -35,17 +35,29 @@ def main() -> None:  # kuzgun-client giriş noktası: ince terminal istemcisi
     from kuzgun.config import load_config
 
     base = sys.argv[1] if len(sys.argv) > 1 else load_config().engine_url
-    print(f"Kuzgun istemcisi -> {base}  (/cikis ile çık)")
+    mode = "normal"
+    print(
+        f"Kuzgun istemcisi -> {base}  (mod: {mode}; "
+        "/mod <plan|normal|otonom>, /cikis)"
+    )
     while True:
         try:
-            user = input("\nsen> ").strip()
+            user = input(f"\n[{mode}] sen> ").strip()
         except (EOFError, KeyboardInterrupt):
             break
         if user in ("/cikis", "/exit"):
             break
         if not user:
             continue
-        print("\nkuzgun>", remote_chat(user, base_url=base))
+        if user.startswith("/mod"):
+            parts = user.split()
+            if len(parts) > 1 and parts[1] in ("plan", "normal", "otonom"):
+                mode = parts[1]
+                print(f"Mod değişti: {mode}")
+            else:
+                print("Kullanım: /mod <plan|normal|otonom>")
+            continue
+        print("\nkuzgun>", remote_chat(user, base_url=base, mode=mode))
 
 
 if __name__ == "__main__":

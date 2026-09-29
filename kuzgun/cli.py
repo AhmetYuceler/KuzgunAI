@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from kuzgun.agent import run_turn
-from kuzgun.embeddings import OllamaEmbedder
-from kuzgun.engine import (
+from kuzgun.engine import (  # build_default_registry/inject_memory: testlerce içe aktarılır
+    KuzgunEngine,
     SYSTEM_PROMPT,
     build_default_registry,
-    build_memory,
     inject_memory,
 )
-from kuzgun.models import OllamaClient
 from kuzgun.permissions import MODES
 from kuzgun.teacher import ask_claude
 
@@ -45,12 +42,9 @@ def _confirm(name: str, arguments: dict) -> bool:
 
 
 def main() -> None:
-    client = OllamaClient()
-    embedder = OllamaEmbedder()
-    memory = build_memory()
-    registry = build_default_registry()
+    # Tek çekirdek: motor. CLI etkileşimli onayı sağlar; hafıza/araç/döngü motorda.
+    engine = KuzgunEngine(confirm=_confirm)
     state = {"mode": "normal", "quit": False}
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     print(f"Kuzgun hazır (mod: {state['mode']}). /yardim ile komutlar, /cikis ile çık.")
     while True:
         try:
@@ -63,10 +57,11 @@ def main() -> None:
             soru = user[len("/claude ") :].strip()
             cevap = ask_claude(soru)
             print(f"\n[claude] {cevap}")
-            try:
-                memory.add(soru, cevap, embedder)  # öğrenme: Claude'un cevabını hafızaya yaz
-            except Exception:
-                pass
+            if cevap and not cevap.startswith("Error:"):  # hataları öğrenme
+                try:
+                    engine.memory.add(soru, cevap, engine.embedder)
+                except Exception:
+                    pass
             continue
         slash = handle_slash(user, state)
         if slash is not None:
@@ -75,21 +70,10 @@ def main() -> None:
                 break
             continue
         try:
-            inject_memory(messages, memory, embedder, user)
-        except Exception:
-            pass  # embedding modeli yoksa hafıza sessizce atlanır
-        messages.append({"role": "user", "content": user})
-        try:
-            cevap = run_turn(
-                client, messages, registry, mode=state["mode"], confirm=_confirm
-            )
+            cevap = engine.chat(user, mode=state["mode"])
         except Exception as exc:
             cevap = f"[hata] {exc}"
         print(f"\nkuzgun> {cevap}")
-        try:
-            memory.add(user, cevap, embedder)  # öğrenme: konuşmayı hafızaya yaz
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":

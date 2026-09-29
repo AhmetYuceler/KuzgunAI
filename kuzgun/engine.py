@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+import threading
+
 from kuzgun.agent import run_turn
 from kuzgun.config import Config, load_config
 from kuzgun.embeddings import OllamaEmbedder
@@ -48,11 +51,16 @@ def inject_memory(messages: list[dict], memory: Memory, embedder, user_text: str
 
 
 class KuzgunEngine:
-    """Kuzgun çekirdeği: model + embedder + hafıza + araçlar + konuşma durumu.
+    """Kuzgun çekirdeği: model + embedder + hafıza + araçlar (paylaşılan kaynaklar).
 
-    `chat` etkileşimsizdir (confirm=None): normal modda değişiklik yapan araçlar
-    reddedilir. Mutasyon için otonom mod gerekir. Yerelde de, sunucuda da aynı sınıf.
+    Konuşma durumu oturum (session) bazlıdır: `session_id=None` varsayılan tek
+    konuşmayı (CLI/tek kullanıcı) kullanır; sunucu her istemci için ayrı bir
+    session_id verir → izolasyon + yarış yok. `confirm` geri çağırması ile normal
+    modda onay alınabilir (CLI etkileşimli; sunucu None → mutasyon reddedilir).
+    Yerelde de, sunucuda da aynı sınıf; thread-güvenlidir.
     """
+
+    MAX_HISTORY = 24  # sistem mesajı + son ~N tur (bağlam sınırsız büyümesin)
 
     def __init__(
         self,
@@ -62,9 +70,12 @@ class KuzgunEngine:
         registry: ToolRegistry | None = None,
         system_prompt: str = SYSTEM_PROMPT,
         config: Config | None = None,
+        confirm=None,
     ):
         cfg = config if config is not None else load_config()
         self.config = cfg
+        self.system_prompt = system_prompt
+        self.confirm = confirm
         self.client = (
             client
             if client is not None
@@ -77,19 +88,48 @@ class KuzgunEngine:
         )
         self.memory = memory if memory is not None else Memory(cfg.db_path)
         self.registry = registry if registry is not None else build_default_registry()
-        self.messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        self.messages: list[dict] = self._new_history()
+        self._sessions: dict[str, list[dict]] = {}
+        self._slock = threading.Lock()
 
-    def chat(self, message: str, mode: str = "normal") -> str:
+    def _new_history(self) -> list[dict]:
+        return [{"role": "system", "content": self.system_prompt}]
+
+    def history(self, session_id: str | None = None) -> list[dict]:
+        if session_id is None:
+            return self.messages
+        with self._slock:
+            return self._sessions.setdefault(session_id, self._new_history())
+
+    def _trim(self, messages: list[dict]) -> None:
+        if len(messages) <= self.MAX_HISTORY:
+            return
+        system = messages[0]
+        tail = messages[-(self.MAX_HISTORY - 1) :]
+        # Kuyruk bir 'user' mesajıyla başlasın — sarkan tool/assistant kalmasın.
+        while tail and tail[0].get("role") != "user":
+            tail.pop(0)
+        messages[:] = [system] + tail
+
+    def chat(
+        self,
+        message: str,
+        mode: str = "normal",
+        confirm=None,
+        session_id: str | None = None,
+    ) -> str:
+        messages = self.history(session_id)
+        cb = confirm if confirm is not None else self.confirm
         try:
-            inject_memory(self.messages, self.memory, self.embedder, message)
-        except Exception:
-            pass
-        self.messages.append({"role": "user", "content": message})
-        reply = run_turn(
-            self.client, self.messages, self.registry, mode=mode, confirm=None
-        )
-        try:
-            self.memory.add(message, reply, self.embedder)
-        except Exception:
-            pass
+            inject_memory(messages, self.memory, self.embedder, message)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[hafıza-uyarı] geçmiş çağrılamadı: {exc}", file=sys.stderr)
+        messages.append({"role": "user", "content": message})
+        reply = run_turn(self.client, messages, self.registry, mode=mode, confirm=cb)
+        if reply and not reply.startswith("Error:"):  # hataları "öğrenme"
+            try:
+                self.memory.add(message, reply, self.embedder)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[hafıza-uyarı] kaydedilemedi: {exc}", file=sys.stderr)
+        self._trim(messages)
         return reply
