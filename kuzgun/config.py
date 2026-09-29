@@ -15,6 +15,9 @@ class Config:
     engine_url: str = "http://127.0.0.1:8000"
     host: str = "127.0.0.1"
     port: int = 8000
+    # Güvenlik: sunucu uzağa açılırsa (host != 127.0.0.1) bir token ayarla.
+    token: str = ""  # boşsa kimlik doğrulama kapalı (yalnız yerel kullanım için)
+    allowed_hosts: str = "127.0.0.1,localhost"  # DNS-rebinding koruması (Host doğrulama)
 
 
 def load_config() -> Config:
@@ -28,4 +31,6 @@ def load_config() -> Config:
         engine_url=os.environ.get("KUZGUN_ENGINE_URL", d.engine_url),
         host=os.environ.get("KUZGUN_HOST", d.host),
         port=int(os.environ.get("KUZGUN_PORT", str(d.port))),
+        token=os.environ.get("KUZGUN_TOKEN", d.token),
+        allowed_hosts=os.environ.get("KUZGUN_ALLOWED_HOSTS", d.allowed_hosts),
     )
