@@ -196,6 +196,8 @@ def build_chunks(scan: dict, max_chars: int = 5000) -> list[str]:
     chunks: list[str] = []
     cur = ""
     for f in scan["files"]:
+        if not f["signatures"]:
+            continue  # imzasız (boş/__init__) dosya: özetlenecek bir şey yok, 7B uyduruyor
         block = f"### {f['path']} ({f['size']} bayt)\n" + "\n".join(f["signatures"][:40]) + "\n\n"
         if cur and len(cur) + len(block) > max_chars:
             chunks.append(cur)
@@ -206,6 +208,9 @@ def build_chunks(scan: dict, max_chars: int = 5000) -> list[str]:
     return chunks
 
 
+_CJK_TAIL = re.compile(r"[　-ヿ一-鿿가-힯].*$")
+
+
 def _align_notes(lines: list[str], paths: list[str]) -> list[str]:
     """Modelin satırlarını gerçek dosya yollarıyla eşler. 7B bazen 'yol:' şablonunu
     harfiyen yazıyor ya da yolu atlıyor; satır sayısı dosya sayısına eşitse sırayla
@@ -213,7 +218,7 @@ def _align_notes(lines: list[str], paths: list[str]) -> list[str]:
     known = set(paths)
     parsed = []
     for ln in lines:
-        body = ln.lstrip("-").strip()
+        body = _CJK_TAIL.sub("", ln.lstrip("-").strip()).strip()  # qwen'in Çince artığı
         head, _, rest = body.partition(":")
         parsed.append((head.strip(), rest.strip(), body))
     # Şablon modu: hiçbir satırda gerçek yol yok ama satır sayısı tutuyor → sırayla eşle.

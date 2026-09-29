@@ -61,9 +61,9 @@ def test_extract_signatures_python_and_js():
 def test_build_chunks_respects_size_limit(tmp_path):
     _make_project(tmp_path)
     scan = scan_project(str(tmp_path))
-    chunks = build_chunks(scan, max_chars=200)
+    chunks = build_chunks(scan, max_chars=80)
     assert len(chunks) >= 2
-    assert all(len(c) <= 260 for c in chunks)  # başlık payı hariç sınırın altında
+    assert all(len(c) <= 160 for c in chunks)  # tek blok sınırı aşabilir, iki blok asla
 
 
 def test_render_preserves_user_notes_section():
