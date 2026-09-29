@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 
+from kuzgun.logging_setup import get_logger, timed
 from kuzgun.models import AssistantMessage, ToolCall
 from kuzgun.permissions import is_allowed
 from kuzgun.tools import ToolRegistry
+
+log = get_logger("agent")
 
 
 def _first_json_object(text: str) -> str | None:
@@ -139,11 +143,14 @@ def run_turn(
         messages.append({"role": "assistant", "content": reply})
         return reply
 
+    turn_id = uuid.uuid4().hex[:8]
+    log.info("tur başladı id=%s mode=%s", turn_id, mode)
     last_sig = None
     repeat = 0
     err_streak = 0
-    for _ in range(max_steps):
-        assistant = client.chat(messages, registry.schemas())
+    for step in range(max_steps):
+        with timed(log, "model", id=turn_id, step=step):
+            assistant = client.chat(messages, registry.schemas())
         # Model tool call'u metin-JSON olarak verdiyse gerçek çağrıya çevir.
         if not assistant.tool_calls:
             recovered = extract_tool_calls_from_text(assistant.text)
@@ -165,9 +172,15 @@ def run_turn(
         for tc in assistant.tool_calls:
             mutating = registry.is_mutating(tc.name)
             allowed, reason = is_allowed(tc.name, tc.arguments, mutating, mode, confirm)
-            result = registry.execute(tc.name, tc.arguments) if allowed else reason
+            if allowed:
+                with timed(log, "araç", id=turn_id, name=tc.name):
+                    result = registry.execute(tc.name, tc.arguments)
+            else:
+                result = reason
+                log.info("araç engellendi id=%s name=%s mode=%s", turn_id, tc.name, mode)
             if isinstance(result, str) and result.startswith("Error:"):
                 step_error = True
+                log.warning("araç hatası id=%s name=%s: %s", turn_id, tc.name, result[:200])
             messages.append(
                 {"role": "tool", "tool_call_id": tc.id, "content": result}
             )
