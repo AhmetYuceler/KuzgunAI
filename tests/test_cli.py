@@ -73,3 +73,15 @@ def test_inject_memory_empty_adds_nothing():
     messages = []
     inject_memory(messages, Memory(":memory:"), FakeEmbedder(), "soru")
     assert messages == []
+
+
+def test_registry_has_ask_expert_read_only():
+    reg = build_default_registry()
+    names = [s["function"]["name"] for s in reg.schemas()]
+    assert "ask_expert" in names
+    assert reg.is_mutating("ask_expert") is False
+
+
+def test_yardim_mentions_claude():
+    out = handle_slash("/yardim", {"mode": "normal"})
+    assert "claude" in out.lower()

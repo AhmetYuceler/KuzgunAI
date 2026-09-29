@@ -13,6 +13,8 @@ from kuzgun.tools.glob_search import glob_search, GLOB_SCHEMA
 from kuzgun.tools.grep_search import grep_search, GREP_SCHEMA
 from kuzgun.tools.web_search import web_search, WEB_SEARCH_SCHEMA
 from kuzgun.tools.fetch_url import fetch_url, FETCH_URL_SCHEMA
+from kuzgun.tools.ask_expert import ask_expert, ASK_EXPERT_SCHEMA
+from kuzgun.teacher import ask_claude
 
 SYSTEM_PROMPT = (
     "Sen Kuzgun'sun: Türkçe konuşan, yardımsever bir terminal asistanı. "
@@ -29,6 +31,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(GREP_SCHEMA, grep_search)
     reg.register(WEB_SEARCH_SCHEMA, web_search)
     reg.register(FETCH_URL_SCHEMA, fetch_url)
+    reg.register(ASK_EXPERT_SCHEMA, ask_expert)
     reg.register(WRITE_FILE_SCHEMA, write_file, mutating=True)
     reg.register(RUN_COMMAND_SCHEMA, run_command, mutating=True)
     return reg
@@ -44,7 +47,10 @@ def handle_slash(line: str, state: dict) -> str | None:
         state["quit"] = True
         return "Görüşürüz!"
     if cmd == "/yardim":
-        return "Komutlar: /mod <plan|normal|otonom>, /yardim, /cikis"
+        return (
+            "Komutlar: /mod <plan|normal|otonom>, /claude <soru> (uzmana danış), "
+            "/yardim, /cikis"
+        )
     if cmd == "/mod":
         if len(parts) < 2:
             return f"Şu anki mod: {state['mode']}. Kullanım: /mod {'|'.join(MODES)}"
@@ -87,6 +93,15 @@ def main() -> None:
         except (EOFError, KeyboardInterrupt):
             break
         if not user:
+            continue
+        if user.startswith("/claude "):
+            soru = user[len("/claude ") :].strip()
+            cevap = ask_claude(soru)
+            print(f"\n[claude] {cevap}")
+            try:
+                memory.add(soru, cevap, embedder)  # öğrenme: Claude'un cevabını hafızaya yaz
+            except Exception:
+                pass
             continue
         slash = handle_slash(user, state)
         if slash is not None:
