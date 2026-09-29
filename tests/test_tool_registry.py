@@ -1,0 +1,52 @@
+"""ToolRegistry sözleşme doğrulaması (Faz A1).
+
+Model, araca yalnız şemada TANIMLI parametreleri geçirebilmeli. Şema dışı bir
+anahtar (ör. bir aracın gizli `_path` parametresi) reddedilmeli — yoksa model
+onay kapısını atlayıp keyfi dosyaya yazabilir (bug #1).
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from kuzgun.tools import ToolRegistry
+
+
+def _schema(name, props):
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "parameters": {"type": "object", "properties": props},
+        },
+    }
+
+
+def test_execute_rejects_unknown_argument():
+    reg = ToolRegistry()
+    seen = {}
+    reg.register(_schema("yaz", {"fact": {"type": "string"}}),
+                 lambda **kw: seen.update(kw) or "ok")
+    out = reg.execute("yaz", {"fact": "a", "_path": "C:/gizli.txt"})
+    assert out.startswith("Error:")           # şema dışı anahtar reddedildi
+    assert seen == {}                          # fonksiyon HİÇ çağrılmadı
+
+
+def test_execute_allows_declared_arguments():
+    reg = ToolRegistry()
+    reg.register(_schema("yaz", {"fact": {"type": "string"}}),
+                 lambda fact: f"kaydedildi:{fact}")
+    assert reg.execute("yaz", {"fact": "merhaba"}) == "kaydedildi:merhaba"
+
+
+def test_execute_allows_empty_args_when_no_properties():
+    reg = ToolRegistry()
+    reg.register(_schema("ping", {}), lambda: "pong")
+    assert reg.execute("ping", {}) == "pong"
+
+
+def test_duplicate_registration_raises():
+    reg = ToolRegistry()
+    reg.register(_schema("x", {}), lambda: "1")
+    with pytest.raises(ValueError):
+        reg.register(_schema("x", {}), lambda: "2")
