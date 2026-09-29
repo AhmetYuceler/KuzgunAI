@@ -14,6 +14,9 @@ class ToolRegistry:
     def schemas(self) -> list[dict]:
         return [schema for schema, _, _ in self._tools.values()]
 
+    def has(self, name: str) -> bool:
+        return name in self._tools
+
     def is_mutating(self, name: str) -> bool:
         entry = self._tools.get(name)
         return bool(entry[2]) if entry else False

@@ -64,3 +64,12 @@ def test_code_tasks_detected():
 def test_non_code_tasks_not_detected():
     for msg in ["Merhaba nasılsın", "Fransa'nın başkenti neresi", "bugün hava nasıl"]:
         assert not is_code_task(msg), msg
+
+
+def test_is_compound_detects_multiple_questions():
+    from kuzgun.router import is_compound
+
+    assert is_compound("hava kaç derece şu anda? 2x2 kaç? türkiye başkenti neresi")
+    assert is_compound("hava nasıl. bir de şu dosyayı oku")
+    assert not is_compound("bugün hava nasıl?")
+    assert not is_compound("hava kaç derece, yağmur var mı?")  # tek soru, virgüllü

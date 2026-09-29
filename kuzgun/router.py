@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 # Açıkça "zor / çok-adımlı ajanik" işaret eden kalıplar. Yerel 7B model bunlarda
 # güvenilmez olduğu için (bkz. Faz 7 bulgular) doğrudan uzmana (Claude) yönlendirilir.
 _HARD_PATTERNS = (
@@ -106,3 +108,13 @@ def detect_weather_intent(message: str) -> bool:
     """Mesaj bir hava durumu sorusu mu?"""
     low = message.lower()
     return any(p in low for p in _WEATHER_PHRASES)
+
+
+def is_compound(message: str) -> bool:
+    """Mesajda birden fazla soru/cümle var mı? ('hava kaç derece? 2x2 kaç?')
+
+    Deterministik kısayollar (hava, medya) yalnız TEK niyetli mesajda modeli
+    atlamalı; bileşik mesajda diğer sorular yutulmasın diye model de çalışır.
+    """
+    parts = [p for p in re.split(r"[?.!\n]+", message) if p.strip()]
+    return len(parts) > 1

@@ -42,3 +42,15 @@ def test_reads_env(monkeypatch):
     assert c.model == "llama3.1:8b"
     assert c.port == 9000  # int'e çevrilmeli
     assert c.db_path == "/veri/x.db"
+
+
+def test_invalid_port_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("KUZGUN_PORT", "abc")
+    assert load_config().port == 8000
+
+
+def test_claude_timeout_env(monkeypatch):
+    monkeypatch.delenv("KUZGUN_CLAUDE_TIMEOUT", raising=False)
+    assert load_config().claude_timeout == 300
+    monkeypatch.setenv("KUZGUN_CLAUDE_TIMEOUT", "600")
+    assert load_config().claude_timeout == 600

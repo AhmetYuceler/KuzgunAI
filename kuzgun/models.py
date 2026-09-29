@@ -65,10 +65,13 @@ class OllamaClient:
         self,
         model: str = "qwen2.5:7b-instruct",
         base_url: str = "http://localhost:11434/v1",
+        timeout: float = 300,
     ):
         from openai import OpenAI
 
-        self._client = OpenAI(base_url=base_url, api_key="ollama")
+        # timeout: Ollama takılırsa sonsuza dek beklenmesin (Ctrl+C'siz kurtulma).
+        self.client_timeout = timeout
+        self._client = OpenAI(base_url=base_url, api_key="ollama", timeout=timeout)
         self._model = model
 
     def chat(self, messages, tools) -> AssistantMessage:

@@ -102,7 +102,8 @@ def run_turn(
         # Model tool call'u metin-JSON olarak verdiyse gerçek çağrıya çevir.
         if not assistant.tool_calls:
             recovered = extract_tool_calls_from_text(assistant.text)
-            if recovered:
+            # Yalnız KAYITLI bir aracı gösteriyorsa çağrı say; değilse cevap JSON'dur.
+            if recovered and all(registry.has(tc.name) for tc in recovered):
                 assistant.tool_calls = recovered
                 assistant.text = None
         messages.append(_assistant_to_history(assistant))

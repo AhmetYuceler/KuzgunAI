@@ -105,3 +105,48 @@ def test_registry_has_ask_expert_read_only():
 def test_yardim_mentions_claude():
     out = handle_slash("/yardim", {"mode": "normal"})
     assert "claude" in out.lower()
+
+
+def test_slash_commands_without_argument_show_usage():
+    for cmd in ("/hatirla", "/ajanlar", "/claude"):
+        out = handle_slash(cmd, {"mode": "normal"})
+        assert "Kullanım" in out and cmd in out
+
+
+def test_mode_shortcut_commands_switch_mode():
+    state = {"mode": "normal"}
+    assert "plan" in handle_slash("/plan", state)
+    assert state["mode"] == "plan"
+    handle_slash("/otonom", state)
+    assert state["mode"] == "otonom"
+    handle_slash("/normal", state)
+    assert state["mode"] == "normal"
+
+
+def test_mode_shortcut_with_task_queues_it():
+    # '/plan https://x.com/... bu sayfaya eriş' → plan moduna geç VE görevi işle
+    state = {"mode": "normal"}
+    handle_slash("/plan şu sayfaya bak ve özetle", state)
+    assert state["mode"] == "plan"
+    assert state["pending"] == "şu sayfaya bak ve özetle"
+
+
+def test_unknown_command_suggests_closest():
+    out = handle_slash("/gecmiş", {"mode": "normal"})
+    assert "/gecmis" in out
+
+
+def test_unknown_command_without_match_points_to_help():
+    out = handle_slash("/resume", {"mode": "normal"})
+    assert "/yardim" in out
+
+
+def test_run_guarded_returns_cancel_message_on_ctrl_c():
+    from kuzgun.cli import run_guarded
+
+    def boom():
+        raise KeyboardInterrupt
+
+    assert "iptal" in run_guarded(boom).lower()
+    assert run_guarded(lambda: "ok") == "ok"
+    assert run_guarded(lambda: 1 / 0).startswith("[hata]")

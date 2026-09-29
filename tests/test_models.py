@@ -40,3 +40,10 @@ def test_clients_satisfy_modelclient_protocol():
     from kuzgun.models import ModelClient
 
     assert isinstance(FakeModelClient([]), ModelClient)
+
+
+def test_ollama_client_has_request_timeout():
+    from kuzgun.models import OllamaClient
+
+    assert OllamaClient(timeout=7).client_timeout == 7
+    assert OllamaClient().client_timeout > 0  # varsayılan: sonsuz bekleme yok

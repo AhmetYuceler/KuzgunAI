@@ -26,3 +26,25 @@ def test_runner_error_is_caught():
 
 def test_empty_question_rejected():
     assert ask_claude("   ", _runner=lambda q: "x").startswith("Error:")
+
+
+def test_context_is_prepended_to_question():
+    seen = {}
+
+    def runner(q):
+        seen["q"] = q
+        return "ok"
+
+    ask_claude("bunları düzelt", _runner=runner, context="[sen] selam\n[kuzgun] merhaba")
+    assert "merhaba" in seen["q"]
+    assert seen["q"].rstrip().endswith("bunları düzelt")
+
+
+def test_timeout_error_is_friendly():
+    import subprocess
+
+    def slow(q):
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=5)
+
+    out = ask_claude("x", _runner=slow)
+    assert out.startswith("Error:") and "zaman" in out.lower()

@@ -4,11 +4,16 @@ import json
 import urllib.request
 
 
-def _http_post(url: str, payload: dict) -> dict:
+def _build_request(url: str, payload: dict, token: str = "") -> urllib.request.Request:
+    headers = {"Content-Type": "application/json"}
+    if token:  # sunucuda KUZGUN_TOKEN ayarlıysa bearer token zorunlu
+        headers["Authorization"] = f"Bearer {token}"
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}
-    )
+    return urllib.request.Request(url, data=data, headers=headers)
+
+
+def _http_post(url: str, payload: dict, token: str = "") -> dict:
+    req = _build_request(url, payload, token)
     with urllib.request.urlopen(req, timeout=300) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
@@ -18,12 +23,17 @@ def remote_chat(
     base_url: str = "http://127.0.0.1:8000",
     mode: str = "normal",
     _post=None,
+    token: str = "",
+    session: str = "default",
 ) -> str:
     """Uzak (veya yerel) Kuzgun motoruna HTTP ile mesaj gönderir, cevabı döndürür."""
-    post = _post or _http_post
     url = base_url.rstrip("/") + "/chat"
+    payload = {"message": message, "mode": mode, "session": session}
     try:
-        result = post(url, {"message": message, "mode": mode})
+        if _post is not None:
+            result = _post(url, payload)
+        else:
+            result = _http_post(url, payload, token)
     except Exception as exc:
         return f"Error: {exc}"
     return result.get("reply", "")
@@ -31,10 +41,13 @@ def remote_chat(
 
 def main() -> None:  # kuzgun-client giriş noktası: ince terminal istemcisi
     import sys
+    import uuid
 
     from kuzgun.config import load_config
 
-    base = sys.argv[1] if len(sys.argv) > 1 else load_config().engine_url
+    cfg = load_config()
+    base = sys.argv[1] if len(sys.argv) > 1 else cfg.engine_url
+    session = "istemci-" + uuid.uuid4().hex[:8]  # her istemci kendi konuşması
     mode = "normal"
     # Not: HTTP üzerinden yalnız plan/normal geçerli; 'otonom' (onaysız mutasyon)
     # güvenlik nedeniyle sunucuda yasak, yerel `kuzgun` CLI'da yapılır.
@@ -56,7 +69,10 @@ def main() -> None:  # kuzgun-client giriş noktası: ince terminal istemcisi
             else:
                 print("Kullanım: /mod <plan|normal>  (otonom yalnız yerel CLI'da)")
             continue
-        print("\nkuzgun>", remote_chat(user, base_url=base, mode=mode))
+        print(
+            "\nkuzgun>",
+            remote_chat(user, base_url=base, mode=mode, token=cfg.token, session=session),
+        )
 
 
 if __name__ == "__main__":

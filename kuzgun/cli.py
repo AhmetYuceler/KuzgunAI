@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import difflib
+import os
+
+from kuzgun import __version__
 from kuzgun.engine import (  # build_default_registry/inject_memory: testlerce içe aktarılır
     KuzgunEngine,
     SYSTEM_PROMPT,
@@ -8,6 +12,14 @@ from kuzgun.engine import (  # build_default_registry/inject_memory: testlerce i
 )
 from kuzgun.permissions import MODES
 from kuzgun.teacher import ask_claude
+
+
+# Argümansız yazılırsa kullanım gösterilen komutlar (argümanlısı main() içinde işlenir).
+_NEEDS_ARG = {"/hatirla": "<şey>", "/ajanlar": "<görev>", "/claude": "<soru>"}
+COMMANDS = (
+    "/yardim", "/mod", "/plan", "/normal", "/otonom", "/claude", "/ajanlar",
+    "/hatirla", "/notlar", "/gecmis", "/cikis",
+)
 
 
 def handle_slash(line: str, state: dict) -> str | None:
@@ -21,7 +33,8 @@ def handle_slash(line: str, state: dict) -> str | None:
         return "Görüşürüz!"
     if cmd == "/yardim":
         return (
-            "Komutlar: /mod <plan|normal|otonom>, /claude <soru> (uzmana danış), "
+            "Komutlar: /mod <plan|normal|otonom> (ya da kısaca /plan, /normal, /otonom; "
+            "shift+tab de döndürür), /claude <soru> (uzmana danış), "
             "/ajanlar <görev> (çok adımlı işi böl-yap), /hatirla <şey>, /notlar, "
             "/gecmis, /yardim, /cikis"
         )
@@ -33,7 +46,17 @@ def handle_slash(line: str, state: dict) -> str | None:
             return f"Geçersiz mod: {yeni}. Seçenekler: {', '.join(MODES)}"
         state["mode"] = yeni
         return f"Mod değişti: {yeni}"
-    return f"Bilinmeyen komut: {cmd}. /yardim yaz."
+    if cmd[1:] in MODES:  # /plan <görev> → moda geç, görev varsa hemen işle
+        state["mode"] = cmd[1:]
+        gorev = line[len(cmd) :].strip()
+        if gorev:
+            state["pending"] = gorev
+        return f"Mod değişti: {state['mode']}"
+    if cmd in _NEEDS_ARG and len(parts) < 2:
+        return f"Kullanım: {cmd} {_NEEDS_ARG[cmd]}"
+    yakin = difflib.get_close_matches(cmd, COMMANDS, n=1, cutoff=0.6)
+    ipucu = f" Şunu mu demek istedin: {yakin[0]}?" if yakin else ""
+    return f"Bilinmeyen komut: {cmd}.{ipucu} /yardim yaz."
 
 
 def format_history(messages: list[dict], n: int = 8) -> str:
@@ -50,6 +73,17 @@ def format_history(messages: list[dict], n: int = 8) -> str:
     return "\n".join(lines)
 
 
+def run_guarded(fn, *args, **kwargs) -> str:
+    """Uzun işi (model/claude/ajanlar) çalıştırır; Ctrl+C'de traceback yerine
+    kısa bir iptal mesajı, hatada '[hata] ...' döner. Program kapanmaz."""
+    try:
+        return fn(*args, **kwargs)
+    except KeyboardInterrupt:
+        return "[iptal edildi]"
+    except Exception as exc:  # noqa: BLE001
+        return f"[hata] {exc}"
+
+
 def _confirm(name: str, arguments: dict) -> bool:
     print(f"\n[onay] Kuzgun '{name}' çalıştırmak istiyor: {arguments}")
     ans = input("İzin veriyor musun? (e/h) ").strip().lower()
@@ -61,21 +95,30 @@ def main() -> None:
     from rich.markdown import Markdown
     from rich.panel import Panel
 
+    from kuzgun import ui
+
     console = Console()
     engine = KuzgunEngine(confirm=_confirm)
     state = {"mode": engine.config.mode, "quit": False}  # başlangıç modu (KUZGUN_MODE)
+    console.print()
     console.print(
-        Panel.fit(
-            "[bold]🦅 Kuzgun[/] hazır — kişisel yerel yapay zekâ ajanın\n"
-            "[dim]/yardim · /mod · /claude · /gecmis · /cikis[/]",
-            border_style="cyan",
+        ui.render_header(
+            version=__version__, model=engine.config.model, cwd=ui.short_path(os.getcwd())
         )
     )
+    console.print()
+    session = ui.make_session(state) if ui.is_interactive() else None
+
+    def _sor(user: str) -> None:
+        """Bir kullanıcı mesajını modele iletir ve cevabı basar."""
+        console.print("[dim]düşünüyor... (Ctrl+C iptal)[/]")
+        cevap = run_guarded(engine.chat, user, mode=state["mode"])
+        console.print("[bold green]kuzgun>[/]")
+        console.print(Markdown(cevap))
+
     while True:
-        # Girişi düz input() ile alıyoruz (rich console.input non-tty/pipe'ta sorunlu).
-        console.print(f"\n[bold cyan]\\[{state['mode']}] sen>[/] ", end="")
         try:
-            user = input().replace("﻿", "").strip()  # olası BOM'u temizle
+            user = ui.read_input(state, console, session)
         except (EOFError, KeyboardInterrupt):
             break
         if not user:
@@ -94,26 +137,27 @@ def main() -> None:
             from kuzgun.tools.remember import remember
 
             sonuc = remember(user[len("/hatirla ") :].strip(), _path=engine.config.notes_path)
-            engine.notes = load_notes(engine.config.notes_path)  # yeni notu bağlama al
+            engine.notes = load_notes(engine.config.notes_path)  # sonraki turda bağlama girer
             console.print(f"[yellow]{sonuc}[/]")
             continue
         if user.startswith("/ajanlar "):
             gorev = user[len("/ajanlar ") :].strip()
-            console.print("[dim]ajanlar çalışıyor: görev bölünüyor ve tek tek yapılıyor...[/]")
-            try:
-                cevap = engine.run_agents(gorev, mode=state["mode"], confirm=_confirm)
-            except Exception as exc:
-                cevap = f"[hata] {exc}"
+            console.print("[dim]ajanlar çalışıyor: görev bölünüyor ve tek tek yapılıyor... (Ctrl+C iptal)[/]")
+            cevap = run_guarded(engine.run_agents, gorev, mode=state["mode"], confirm=_confirm)
             console.print("[bold green]ajanlar>[/]")
             console.print(Markdown(cevap))
             continue
         if user.startswith("/claude "):
             soru = user[len("/claude ") :].strip()
-            with console.status("[dim]Claude'a danışılıyor...[/]"):
-                cevap = ask_claude(soru)
+            # Son konuşmayı da gönder: 'üstteki hataları düzelt' gibi sorular anlaşılsın.
+            baglam = format_history(engine.messages, n=6)
+            if baglam == "Geçmiş boş.":
+                baglam = ""
+            with console.status("[dim]Claude'a danışılıyor... (Ctrl+C iptal)[/]"):
+                cevap = run_guarded(ask_claude, soru, context=baglam)
             console.print("[bold magenta]claude>[/]")
             console.print(Markdown(cevap))
-            if cevap and not cevap.startswith("Error:"):
+            if cevap and not cevap.startswith(("Error:", "[")):
                 try:
                     engine.memory.add(soru, cevap, engine.embedder)
                 except Exception:
@@ -124,14 +168,11 @@ def main() -> None:
             console.print(f"[yellow]{slash}[/]")
             if state["quit"]:
                 break
+            pending = state.pop("pending", None)
+            if pending:  # '/plan <görev>' → mod değişti, şimdi görevi işle
+                _sor(pending)
             continue
-        console.print("[dim]düşünüyor...[/]")
-        try:
-            cevap = engine.chat(user, mode=state["mode"])
-        except Exception as exc:
-            cevap = f"[hata] {exc}"
-        console.print("[bold green]kuzgun>[/]")
-        console.print(Markdown(cevap))
+        _sor(user)
 
 
 if __name__ == "__main__":

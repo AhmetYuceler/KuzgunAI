@@ -7,3 +7,5 @@ data/
 *.egg-info/
 benchmark_raporu.md
 mcp_servers.json
+Local/
+bg/

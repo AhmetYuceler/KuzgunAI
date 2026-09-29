@@ -41,10 +41,14 @@ class OllamaEmbedder:
         self,
         model: str = "nomic-embed-text",
         base_url: str = "http://localhost:11434/v1",
+        timeout: float = 30,
     ):
         from openai import OpenAI
 
-        self._client = OpenAI(base_url=base_url, api_key="ollama")
+        # Kısa zaman aşımı: hafıza yalnız yardımcı bağlamdır; embedding takılırsa
+        # (ekran görüntüsündeki Ctrl+C durumu) sohbet engellenmesin.
+        self.client_timeout = timeout
+        self._client = OpenAI(base_url=base_url, api_key="ollama", timeout=timeout, max_retries=1)
         self._model = model
 
     def embed(self, text: str) -> list[float]:

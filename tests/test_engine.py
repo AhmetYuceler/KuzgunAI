@@ -282,3 +282,96 @@ def test_normal_mode_denies_mutation_without_confirm():
     out = eng.chat("yaz bir sey", mode="normal")
     assert out == "bitti"
     assert calls == []  # confirm yok -> reddedildi (güvenli)
+
+
+def _notes_engine(tmp_path, scripted):
+    from kuzgun.config import Config
+
+    notes = tmp_path / "KUZGUN.md"
+    eng = KuzgunEngine(
+        client=FakeModelClient(scripted),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+        config=Config(notes_path=str(notes)),
+    )
+    return eng, notes
+
+
+def test_trim_keeps_notes_in_context(tmp_path):
+    from kuzgun.config import Config
+
+    notes = tmp_path / "KUZGUN.md"
+    notes.write_text("- kullanıcının adı Ahmet\n", encoding="utf-8")
+    eng = KuzgunEngine(
+        client=FakeModelClient([AssistantMessage(text="x", tool_calls=[])] * 200),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+        config=Config(notes_path=str(notes)),
+    )
+    for i in range(80):
+        eng.chat(f"mesaj {i}")
+    assert len(eng.messages) <= eng.MAX_HISTORY
+    assert any("Ahmet" in m.get("content", "") for m in eng.messages)  # kırpma notu silmez
+
+
+def test_new_note_reaches_running_conversation(tmp_path):
+    eng, notes = _notes_engine(tmp_path, [AssistantMessage(text="x", tool_calls=[])] * 3)
+    eng.chat("merhaba")
+    notes.write_text("- mavi rengi sever\n", encoding="utf-8")  # /hatirla ya da remember aracı
+    eng.chat("nasılsın")
+    hits = [m for m in eng.messages if "mavi rengi" in m.get("content", "")]
+    assert len(hits) == 1  # süren konuşmaya girdi, tekrarlanmadı
+    eng.chat("peki")
+    assert len([m for m in eng.messages if "mavi rengi" in m.get("content", "")]) == 1
+
+
+def test_new_note_reaches_new_sessions(tmp_path):
+    eng, notes = _notes_engine(tmp_path, [])
+    notes.write_text("- mavi rengi sever\n", encoding="utf-8")
+    assert any("mavi rengi" in m.get("content", "") for m in eng.history("yeni"))
+
+
+def test_run_agents_cleans_up_worker_sessions():
+    client = FakeModelClient(
+        [
+            AssistantMessage(text='["ilk is", "ikinci is"]', tool_calls=[]),
+            AssistantMessage(text="ilk sonuc", tool_calls=[]),
+            AssistantMessage(text="ikinci sonuc", tool_calls=[]),
+            AssistantMessage(text="birlesik cevap", tool_calls=[]),
+        ]
+    )
+    eng = KuzgunEngine(
+        client=client,
+        coder_client=client,
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    eng.run_agents("iki isi de yap")
+    assert eng._sessions == {}  # işçi oturumları birikmez
+
+
+def test_engine_weather_only_message_skips_model(monkeypatch):
+    import kuzgun.engine as eng_mod
+
+    monkeypatch.setattr(eng_mod, "weather", lambda: "Kayseri: +15°C")
+    eng = _engine([])  # model çağrılırsa IndexError
+    assert "Kayseri" in eng.chat("bugün hava nasıl?")
+
+
+def test_engine_compound_weather_message_still_asks_model(monkeypatch):
+    # Ekran görüntüsündeki hata: 'hava kaç derece? 2x2 kaç? başkent neresi' →
+    # yalnız hava cevaplanıyor, diğer sorular yutuluyordu.
+    import kuzgun.engine as eng_mod
+
+    monkeypatch.setattr(eng_mod, "weather", lambda: "Kayseri: +15°C")
+    client = FakeModelClient([AssistantMessage(text="4 ve Ankara", tool_calls=[])])
+    eng = KuzgunEngine(
+        client=client, embedder=FakeEmbedder(), memory=Memory(":memory:"), registry=ToolRegistry()
+    )
+    out = eng.chat("hava kaç derece şu anda? 2x2 kaç? türkiye başkenti neresi")
+    assert out == "4 ve Ankara"
+    # hava durumu modele bağlam olarak verildi
+    assert any(m["role"] == "system" and "Kayseri" in m["content"] for m in eng.messages)

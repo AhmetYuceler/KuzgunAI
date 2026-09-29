@@ -189,3 +189,13 @@ def test_normal_mode_mutating_blocked_without_confirm():
     ])
     run_turn(client, [{"role": "user", "content": "?"}], reg, mode="normal", confirm=None)
     assert calls == []
+
+
+def test_text_json_with_unknown_tool_is_plain_answer():
+    # Cevabın kendisi JSON ise (kayıtlı bir araç adı değil) araç çağrısı sanılmamalı.
+    txt = '{"name": "Ahmet", "arguments": {"yas": 30}}'
+    client = FakeModelClient([AssistantMessage(text=txt, tool_calls=[])])
+    messages = [{"role": "user", "content": "bana örnek json ver"}]
+    out = run_turn(client, messages, _registry_with_echo())
+    assert out == txt
+    assert not any(m.get("role") == "tool" for m in messages)

@@ -23,6 +23,15 @@ class Config:
     mode: str = "normal"  # başlangıç modu: plan | normal | otonom
     autoroute: bool = True  # açıkça zor işleri baştan Claude'a yönlendir
     reflect: bool = True  # kod işlerinde yazılan kodu doğrula, hatalıysa düzelttir
+    model_timeout: int = 300  # Ollama sohbet isteği için saniye (takılırsa vazgeç)
+    claude_timeout: int = 300  # /claude ve devretme için 'claude --print' süresi
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default  # bozuk değer başlatmayı çökertmesin
 
 
 def load_config() -> Config:
@@ -41,9 +50,11 @@ def load_config() -> Config:
         notes_path=os.environ.get("KUZGUN_NOTES", d.notes_path),
         engine_url=os.environ.get("KUZGUN_ENGINE_URL", d.engine_url),
         host=os.environ.get("KUZGUN_HOST", d.host),
-        port=int(os.environ.get("KUZGUN_PORT", str(d.port))),
+        port=_int_env("KUZGUN_PORT", d.port),
         token=os.environ.get("KUZGUN_TOKEN", d.token),
         allowed_hosts=os.environ.get("KUZGUN_ALLOWED_HOSTS", d.allowed_hosts),
         autoroute=os.environ.get("KUZGUN_AUTOROUTE", "1") not in ("0", "false", "False"),
         reflect=os.environ.get("KUZGUN_REFLECT", "1") not in ("0", "false", "False"),
+        model_timeout=_int_env("KUZGUN_MODEL_TIMEOUT", d.model_timeout),
+        claude_timeout=_int_env("KUZGUN_CLAUDE_TIMEOUT", d.claude_timeout),
     )
