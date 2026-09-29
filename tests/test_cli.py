@@ -255,3 +255,37 @@ def test_resume_lists_current_folder_first_and_all_on_request(tmp_path):
     assert "bu klasör" in out and "başka klasör" in out
     resume_session(Eng(), a, "1", state)  # numara, bu klasörün listesine göre
     assert state["session_id"] == here
+
+
+def test_init_command_writes_map_and_loads_context(tmp_path):
+    from kuzgun.cli import init_command
+    from kuzgun.models import AssistantMessage
+
+    (tmp_path / "app.py").write_text("def main():\n    pass\n", encoding="utf-8")
+
+    class Client:
+        def chat(self, messages, tools):
+            assert tools is None
+            return AssistantMessage(text="- app.py: giriş noktası", tool_calls=[])
+
+    class Eng:
+        client = Client()
+        extra_context = None
+        messages = [{"role": "system", "content": "sistem"}, {"role": "user", "content": "selam"}]
+
+    eng = Eng()
+    state = {}
+    out = init_command(eng, str(tmp_path), state)
+    assert "KUZGUN.md" in out and (tmp_path / "KUZGUN.md").exists()
+    assert eng.extra_context and "giriş noktası" in eng.extra_context
+    assert state["project_loaded"] is True
+    # süren konuşmaya hemen girer (sistem promptundan sonra), tekrarında yerine konur
+    assert eng.messages[1]["role"] == "system" and "giriş noktası" in eng.messages[1]["content"]
+    init_command(eng, str(tmp_path), state)
+    assert sum("Proje haritası" in m["content"] for m in eng.messages) == 1
+
+
+def test_init_in_command_menu():
+    from kuzgun.cli import COMMAND_HELP
+
+    assert "/init" in COMMAND_HELP and "KUZGUN.md" in COMMAND_HELP["/init"]

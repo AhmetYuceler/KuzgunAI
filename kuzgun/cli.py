@@ -4,6 +4,7 @@ import difflib
 import os
 
 from kuzgun import __version__
+from kuzgun.analyze import is_init_intent
 from kuzgun.engine import (  # build_default_registry/inject_memory: testlerce içe aktarılır
     KuzgunEngine,
     SYSTEM_PROMPT,
@@ -27,12 +28,13 @@ _NEEDS_ARG = {
     "/rename": "<ad>",
 }
 COMMANDS = (
-    "/yardim", "/mod", "/plan", "/normal", "/otonom", "/claude", "/ajanlar",
+    "/yardim", "/init", "/mod", "/plan", "/normal", "/otonom", "/claude", "/ajanlar",
     "/hatirla", "/notlar", "/gecmis", "/resume", "/rename", "/cikis",
 )
 # '/' menüsünde komutun yanında soluk görünen açıklamalar (Claude Code'daki gibi).
 COMMAND_HELP = {
     "/yardim": "komutları listele",
+    "/init": "projeyi analiz et, KUZGUN.md oluştur (her oturumda yüklenir)",
     "/mod": "mod değiştir: plan | normal | otonom",
     "/plan": "plan moduna geç (değişiklik yapmaz); görev de verilebilir",
     "/normal": "normal moda geç (değişiklikte onay sorar)",
@@ -59,7 +61,8 @@ def handle_slash(line: str, state: dict) -> str | None:
         return "Görüşürüz!"
     if cmd == "/yardim":
         return (
-            "Komutlar: /mod <plan|normal|otonom> (ya da kısaca /plan, /normal, /otonom; "
+            "Komutlar: /init (projeyi analiz et → KUZGUN.md), "
+            "/mod <plan|normal|otonom> (ya da kısaca /plan, /normal, /otonom; "
             "shift+tab de döndürür), /claude <soru> (uzmana danış), "
             "/ajanlar <görev> (çok adımlı işi böl-yap), /hatirla <şey>, /notlar, "
             "/gecmis, /resume [ad|no] (eski oturuma dön), /rename <ad> (oturuma ad ver), "
@@ -171,6 +174,39 @@ def resume_session(engine, archive, arg: str, state: dict) -> str:
     )
 
 
+_PROJECT_HEADER = "[Proje haritası —"
+
+
+def init_command(engine, root: str, state: dict, progress=None) -> str:
+    """/init: projeyi tara → parça parça özetlet → KUZGUN.md yaz → bağlama al.
+    Model çağrısı araçsız tek tur (engine.client.chat)."""
+    from kuzgun.analyze import init_project, load_project_notes
+    from kuzgun.models import AssistantMessage
+
+    def model_fn(prompt: str) -> str:
+        out = engine.client.chat([{"role": "user", "content": prompt}], None)
+        return out.text or "" if isinstance(out, AssistantMessage) else str(out)
+
+    _, report = init_project(root, model_fn, progress=progress)
+    notes = load_project_notes(root)
+    ctx = f"{_PROJECT_HEADER} {root}\\KUZGUN.md]\n{notes}" if notes else None
+    engine.extra_context = ctx  # yeni oturumlar için
+    # Süren konuşmaya da hemen gir: eski harita notu varsa yerine koy, yoksa ekle.
+    msgs = engine.messages
+    for i, m in enumerate(msgs):
+        if m.get("role") == "system" and str(m.get("content", "")).startswith(_PROJECT_HEADER):
+            if ctx:
+                msgs[i] = {"role": "system", "content": ctx}
+            else:
+                del msgs[i]
+            break
+    else:
+        if ctx:
+            msgs.insert(1, {"role": "system", "content": ctx})
+    state["project_loaded"] = True
+    return report
+
+
 def run_guarded(fn, *args, **kwargs) -> str:
     """Uzun işi (model/claude/ajanlar) çalıştırır; Ctrl+C'de traceback yerine
     kısa bir iptal mesajı, hatada '[hata] ...' döner. Program kapanmaz."""
@@ -221,9 +257,14 @@ def main(argv=None) -> None:
     from kuzgun import vision
     from kuzgun.archive import SessionArchive
 
+    from kuzgun.analyze import load_project_notes
+
     args = _parse_args(argv)
     console = Console()
-    engine = KuzgunEngine(confirm=_confirm)
+    # Çalışma klasöründeki KUZGUN.md (/init çıktısı) her oturumda bağlama girer.
+    proje_notu = load_project_notes(os.getcwd())
+    extra = f"{_PROJECT_HEADER} {os.getcwd()}\\KUZGUN.md]\n{proje_notu}" if proje_notu else None
+    engine = KuzgunEngine(confirm=_confirm, extra_context=extra)
     # /resume arşivi: her turdan sonra konuşma diske yazılır; eskiler süpürülür.
     archive = SessionArchive(engine.config.sessions_dir)
     archive.sweep(engine.config.session_days)
@@ -280,6 +321,17 @@ def main(argv=None) -> None:
         Etkileşimli kutuda ayrı iş parçacığında çalışır; kutu altta kalır."""
         if user == "/gecmis":
             console.print(Panel(format_history(engine.messages), title="Geçmiş", border_style="dim"))
+            return
+        if user in ("/init", "/analiz") or (not user.startswith("/") and is_init_intent(user)):
+            root = os.getcwd()
+            console.print(f"  [dim]proje taranıyor: {root}[/]")
+
+            def _prog(msg: str) -> None:
+                state["busy"] = f"/init: {msg}"
+
+            cevap = run_guarded(init_command, engine, root, state, progress=_prog)
+            if not cancel.is_set():
+                ui.print_note(console, cevap, style="green")
             return
         if user == "/resume" or user.startswith("/resume "):
             ui.print_note(console, resume_session(engine, archive, user[7:].strip(), state))
