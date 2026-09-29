@@ -13,6 +13,7 @@ class Config:
     embed_model: str = "nomic-embed-text"
     ollama_url: str = "http://localhost:11434/v1"
     db_path: str = "data/memory.db"
+    notes_path: str = "data/KUZGUN.md"  # kalıcı notlar (Claude'un CLAUDE.md'si gibi)
     engine_url: str = "http://127.0.0.1:8000"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -37,6 +38,7 @@ def load_config() -> Config:
         embed_model=os.environ.get("KUZGUN_EMBED_MODEL", d.embed_model),
         ollama_url=os.environ.get("KUZGUN_OLLAMA_URL", d.ollama_url),
         db_path=os.environ.get("KUZGUN_DB", d.db_path),
+        notes_path=os.environ.get("KUZGUN_NOTES", d.notes_path),
         engine_url=os.environ.get("KUZGUN_ENGINE_URL", d.engine_url),
         host=os.environ.get("KUZGUN_HOST", d.host),
         port=int(os.environ.get("KUZGUN_PORT", str(d.port))),

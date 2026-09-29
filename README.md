@@ -61,7 +61,8 @@ kuzgun-client http://SUNUCU_ADRESI:8000
 | `KUZGUN_REFLECT` | `1` | Yazılan kodu doğrula, sözdizimi hatalıysa modele düzelttir |
 | `KUZGUN_EMBED_MODEL` | `nomic-embed-text` | Embedding modeli |
 | `KUZGUN_OLLAMA_URL` | `http://localhost:11434/v1` | Ollama adresi |
-| `KUZGUN_DB` | `data/memory.db` | Hafıza dosyası (taşınabilir) |
+| `KUZGUN_DB` | `data/memory.db` | Konuşma hafızası (RAG, taşınabilir) |
+| `KUZGUN_NOTES` | `data/KUZGUN.md` | Kalıcı notlar (Claude'un CLAUDE.md'si gibi) |
 | `KUZGUN_ENGINE_URL` | `http://127.0.0.1:8000` | İstemcinin bağlanacağı motor |
 | `KUZGUN_HOST` / `KUZGUN_PORT` | `127.0.0.1` / `8000` | Sunucu adresi |
 | `KUZGUN_TOKEN` | *(boş)* | Uzak erişim için bearer token (aşağıya bak) |

@@ -236,6 +236,21 @@ def test_run_agents_decomposes_and_synthesizes():
     assert eng.run_agents("iki isi de yap") == "birlesik cevap"
 
 
+def test_engine_loads_notes_into_context(tmp_path):
+    from kuzgun.config import Config
+
+    notes = tmp_path / "KUZGUN.md"
+    notes.write_text("- kullanıcının adı Ahmet\n- mavi rengi sever\n", encoding="utf-8")
+    eng = KuzgunEngine(
+        client=FakeModelClient([]),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+        config=Config(notes_path=str(notes)),
+    )
+    assert any("Ahmet" in m.get("content", "") for m in eng.messages)
+
+
 def test_history_is_trimmed():
     eng = KuzgunEngine(
         client=FakeModelClient([AssistantMessage(text="x", tool_calls=[])] * 200),

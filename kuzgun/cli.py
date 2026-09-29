@@ -22,7 +22,8 @@ def handle_slash(line: str, state: dict) -> str | None:
     if cmd == "/yardim":
         return (
             "Komutlar: /mod <plan|normal|otonom>, /claude <soru> (uzmana danış), "
-            "/ajanlar <görev> (çok adımlı işi böl-yap), /gecmis, /yardim, /cikis"
+            "/ajanlar <görev> (çok adımlı işi böl-yap), /hatirla <şey>, /notlar, "
+            "/gecmis, /yardim, /cikis"
         )
     if cmd == "/mod":
         if len(parts) < 2:
@@ -81,6 +82,20 @@ def main() -> None:
             continue
         if user == "/gecmis":
             console.print(Panel(format_history(engine.messages), title="Geçmiş", border_style="dim"))
+            continue
+        if user == "/notlar":
+            from kuzgun.notebook import load_notes
+
+            notlar = load_notes(engine.config.notes_path) or "Henüz kalıcı not yok."
+            console.print(Panel(notlar, title="Kalıcı Notlar (KUZGUN.md)", border_style="dim"))
+            continue
+        if user.startswith("/hatirla "):
+            from kuzgun.notebook import load_notes
+            from kuzgun.tools.remember import remember
+
+            sonuc = remember(user[len("/hatirla ") :].strip(), _path=engine.config.notes_path)
+            engine.notes = load_notes(engine.config.notes_path)  # yeni notu bağlama al
+            console.print(f"[yellow]{sonuc}[/]")
             continue
         if user.startswith("/ajanlar "):
             gorev = user[len("/ajanlar ") :].strip()

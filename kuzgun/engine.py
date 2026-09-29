@@ -9,6 +9,7 @@ from kuzgun.embeddings import OllamaEmbedder
 from kuzgun.memory import Memory, recall_context
 from kuzgun.mcp import load_mcp_servers
 from kuzgun.models import OllamaClient
+from kuzgun.notebook import load_notes
 from kuzgun.orchestrator import _plan_with_model, _synth_with_model, orchestrate
 from kuzgun.router import (
     classify_complexity,
@@ -27,6 +28,7 @@ from kuzgun.tools.grep_search import grep_search, GREP_SCHEMA
 from kuzgun.tools.web_search import web_search, WEB_SEARCH_SCHEMA
 from kuzgun.tools.fetch_url import fetch_url, FETCH_URL_SCHEMA
 from kuzgun.tools.ask_expert import ask_expert, ASK_EXPERT_SCHEMA
+from kuzgun.tools.remember import remember, REMEMBER_SCHEMA
 from kuzgun.tools.media_control import media_control, MEDIA_SCHEMA
 from kuzgun.tools.weather import weather, WEATHER_SCHEMA
 
@@ -62,6 +64,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(WEB_SEARCH_SCHEMA, web_search)
     reg.register(FETCH_URL_SCHEMA, fetch_url)
     reg.register(ASK_EXPERT_SCHEMA, ask_expert)
+    reg.register(REMEMBER_SCHEMA, remember)  # kalıcı not (KUZGUN.md)
     reg.register(MEDIA_SCHEMA, media_control)  # zararsız medya/müzik kontrolü
     reg.register(WEATHER_SCHEMA, weather)  # hava durumu (konumdan)
     reg.register(WRITE_FILE_SCHEMA, write_file, mutating=True)
@@ -107,6 +110,7 @@ class KuzgunEngine:
         cfg = config if config is not None else load_config()
         self.config = cfg
         self.system_prompt = system_prompt
+        self.notes = load_notes(cfg.notes_path)  # kalıcı notlar (bağlama yüklenir)
         self.confirm = confirm
         self.autoroute = cfg.autoroute
         self.reflect = cfg.reflect
@@ -142,7 +146,15 @@ class KuzgunEngine:
         self._slock = threading.Lock()
 
     def _new_history(self) -> list[dict]:
-        return [{"role": "system", "content": self.system_prompt}]
+        hist = [{"role": "system", "content": self.system_prompt}]
+        if self.notes:  # kalıcı notları (KUZGUN.md) her konuşmaya yükle
+            hist.append(
+                {
+                    "role": "system",
+                    "content": f"[Kalıcı notlar / kullanıcı hakkında hatırladıkların]\n{self.notes}",
+                }
+            )
+        return hist
 
     def _reflect_code(self, messages, reply, client, mode, confirm, escalate, max_iters=1):
         """Yazılan Python kodunu doğrular; sözdizimi hatası varsa modele geri
