@@ -102,6 +102,45 @@ def test_engine_escalates_when_stuck_and_learns():
     assert eng.memory.count() == 1  # devredilen cevap hafızaya yazıldı (öğrenme)
 
 
+def test_autoroute_hard_task_goes_to_expert():
+    # 'react ... kur' açıkça zor -> yerel model hiç çağrılmadan uzmana gitmeli.
+    eng = KuzgunEngine(
+        client=FakeModelClient([]),  # çağrılırsa IndexError verir
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+        escalate=lambda q: "UZMAN CEVABI",
+    )
+    out = eng.chat("bana bir react uygulaması kur")
+    assert out == "UZMAN CEVABI"
+    assert eng.memory.count() == 1  # öğrenildi
+
+
+def test_autoroute_easy_task_uses_local():
+    eng = KuzgunEngine(
+        client=FakeModelClient([AssistantMessage(text="yerel cevap", tool_calls=[])]),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+        escalate=lambda q: "UZMAN",
+    )
+    assert eng.chat("merhaba nasılsın") == "yerel cevap"
+
+
+def test_autoroute_can_be_disabled():
+    from kuzgun.config import Config
+
+    eng = KuzgunEngine(
+        client=FakeModelClient([AssistantMessage(text="yerel", tool_calls=[])]),
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+        escalate=lambda q: "UZMAN",
+        config=Config(autoroute=False),
+    )
+    assert eng.chat("react uygulaması kur") == "yerel"  # autoroute kapalı -> yerel
+
+
 def test_history_is_trimmed():
     eng = KuzgunEngine(
         client=FakeModelClient([AssistantMessage(text="x", tool_calls=[])] * 200),
