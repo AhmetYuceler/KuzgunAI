@@ -141,6 +141,32 @@ def test_autoroute_can_be_disabled():
     assert eng.chat("react uygulaması kur") == "yerel"  # autoroute kapalı -> yerel
 
 
+def test_code_task_uses_coder_client():
+    general = FakeModelClient([AssistantMessage(text="GENEL", tool_calls=[])])
+    coder = FakeModelClient([AssistantMessage(text="KODER", tool_calls=[])])
+    eng = KuzgunEngine(
+        client=general,
+        coder_client=coder,
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    assert eng.chat("Python'da iki sayiyi toplayan bir fonksiyon yaz") == "KODER"
+
+
+def test_general_task_uses_general_client():
+    general = FakeModelClient([AssistantMessage(text="GENEL", tool_calls=[])])
+    coder = FakeModelClient([AssistantMessage(text="KODER", tool_calls=[])])
+    eng = KuzgunEngine(
+        client=general,
+        coder_client=coder,
+        embedder=FakeEmbedder(),
+        memory=Memory(":memory:"),
+        registry=ToolRegistry(),
+    )
+    assert eng.chat("merhaba nasılsın") == "GENEL"
+
+
 def test_history_is_trimmed():
     eng = KuzgunEngine(
         client=FakeModelClient([AssistantMessage(text="x", tool_calls=[])] * 200),

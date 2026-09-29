@@ -37,3 +37,35 @@ def classify_complexity(message: str) -> tuple[str, str | None]:
         if pat in low:
             return "zor", pat
     return "kolay", None
+
+
+# Kod işareti veren kalıplar (alt-dize eşleşmesi; Türkçe ekler nedeniyle \b değil).
+_CODE_SUBSTR = (
+    "python",
+    "javascript",
+    "typescript",
+    "kotlin",
+    "golang",
+    "fonksiyon",
+    "function",
+    "metod",
+    "algoritma",
+    "regex",
+    "script",
+    "kod",
+    "sql",
+    "html",
+    "css",
+    "debug",
+    "derle",
+    "compile",
+    ".py",
+    ".js",
+    ".ts",
+)
+
+
+def is_code_task(message: str) -> bool:
+    """Mesaj bir kodlama işi mi? (kod-uzmanı modele yönlendirmek için)."""
+    low = message.lower()
+    return any(s in low for s in _CODE_SUBSTR)

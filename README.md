@@ -54,7 +54,9 @@ kuzgun-client http://SUNUCU_ADRESI:8000
 
 | Değişken | Varsayılan | Açıklama |
 |---|---|---|
-| `KUZGUN_MODEL` | `qwen2.5:7b-instruct` | Yerel model |
+| `KUZGUN_MODEL` | `qwen2.5:7b-instruct` | Yerel genel model |
+| `KUZGUN_CODER_MODEL` | `qwen2.5-coder:7b-instruct` | Kod işlerine yönlenen model |
+| `KUZGUN_AUTOROUTE` | `1` | Açıkça zor işleri (react/proje-kur…) baştan Claude'a yönlendir |
 | `KUZGUN_EMBED_MODEL` | `nomic-embed-text` | Embedding modeli |
 | `KUZGUN_OLLAMA_URL` | `http://localhost:11434/v1` | Ollama adresi |
 | `KUZGUN_DB` | `data/memory.db` | Hafıza dosyası (taşınabilir) |

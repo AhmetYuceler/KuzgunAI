@@ -9,6 +9,7 @@ class Config:
     """Kuzgun ayarları. Ortam değişkenleriyle değiştirilir; hepsinin varsayılanı var."""
 
     model: str = "qwen2.5:7b-instruct"
+    coder_model: str = "qwen2.5-coder:7b-instruct"  # kod işleri bu modele gider
     embed_model: str = "nomic-embed-text"
     ollama_url: str = "http://localhost:11434/v1"
     db_path: str = "data/memory.db"
@@ -26,6 +27,7 @@ def load_config() -> Config:
     d = Config()
     return Config(
         model=os.environ.get("KUZGUN_MODEL", d.model),
+        coder_model=os.environ.get("KUZGUN_CODER_MODEL", d.coder_model),
         embed_model=os.environ.get("KUZGUN_EMBED_MODEL", d.embed_model),
         ollama_url=os.environ.get("KUZGUN_OLLAMA_URL", d.ollama_url),
         db_path=os.environ.get("KUZGUN_DB", d.db_path),

@@ -8,7 +8,7 @@ from kuzgun.config import Config, load_config
 from kuzgun.embeddings import OllamaEmbedder
 from kuzgun.memory import Memory, recall_context
 from kuzgun.models import OllamaClient
-from kuzgun.router import classify_complexity
+from kuzgun.router import classify_complexity, is_code_task
 from kuzgun.teacher import ask_claude
 from kuzgun.tools import ToolRegistry
 from kuzgun.tools.read_file import read_file, READ_FILE_SCHEMA
@@ -84,6 +84,7 @@ class KuzgunEngine:
         config: Config | None = None,
         confirm=None,
         escalate=None,
+        coder_client=None,
     ):
         cfg = config if config is not None else load_config()
         self.config = cfg
@@ -103,6 +104,12 @@ class KuzgunEngine:
             else OllamaEmbedder(model=cfg.embed_model, base_url=cfg.ollama_url)
         )
         self.memory = memory if memory is not None else Memory(cfg.db_path)
+        # Kod-uzmanı model (kod işleri buna yönlenir); genel modelle aynı Ollama.
+        self.coder_client = (
+            coder_client
+            if coder_client is not None
+            else OllamaClient(model=cfg.coder_model, base_url=cfg.ollama_url)
+        )
         self.registry = registry if registry is not None else build_default_registry()
         self.messages: list[dict] = self._new_history()
         self._sessions: dict[str, list[dict]] = {}
@@ -160,8 +167,10 @@ class KuzgunEngine:
             reply = esc(message)
             messages.append({"role": "assistant", "content": reply})
         else:
+            # Kod işi kod-uzmanı modele, gerisi genel modele gider.
+            active = self.coder_client if is_code_task(message) else self.client
             reply = run_turn(
-                self.client, messages, self.registry, mode=mode, confirm=cb, escalate=esc
+                active, messages, self.registry, mode=mode, confirm=cb, escalate=esc
             )
         if reply and not reply.startswith("Error:"):  # hataları "öğrenme"
             try:
