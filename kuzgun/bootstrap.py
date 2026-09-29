@@ -14,7 +14,7 @@ from kuzgun.embeddings import OllamaEmbedder
 from kuzgun.logging_setup import get_logger
 from kuzgun.mcp import load_mcp_servers
 from kuzgun.memory import Memory
-from kuzgun.models import OpenAICompatBackend
+from kuzgun.models import FallbackClient, OpenAICompatBackend
 from kuzgun.tools import ToolRegistry
 from kuzgun.tools.ask_expert import ASK_EXPERT_SCHEMA, ask_expert
 from kuzgun.tools.fetch_url import FETCH_URL_SCHEMA, fetch_url
@@ -40,6 +40,17 @@ def make_client(config: Config, model: str | None = None) -> OpenAICompatBackend
         timeout=config.request_timeout,
         temperature=config.temperature,
     )
+
+
+def make_general_client(config: Config):
+    """Genel sohbet istemcisi. config.fallback_models doluysa birincil + yedekleri
+    kapsayan bir FallbackClient döner (C4); yoksa tek arka uç."""
+    if config.fallback_models:
+        names = [config.model] + [
+            m.strip() for m in config.fallback_models.split(",") if m.strip()
+        ]
+        return FallbackClient([make_client(config, m) for m in names])
+    return make_client(config, config.model)
 
 
 def make_embedder(config: Config) -> OllamaEmbedder:

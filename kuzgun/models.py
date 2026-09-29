@@ -111,3 +111,29 @@ class OpenAICompatBackend:
 
 # Eski ad, geriye dönük uyum için takma ad olarak korunur.
 OllamaClient = OpenAICompatBackend
+
+
+class FallbackClient:
+    """Birden çok model arka ucunu sırayla dener (C4): biri hata/zaman aşımı verirse
+    sonrakine geçer. Hepsi düşerse son hatayı yeniden fırlatır. Böylece birincil
+    model yoğun/erişilemezken Kuzgun ikincil bir modelle çalışmaya devam eder."""
+
+    def __init__(self, clients: list):
+        if not clients:
+            raise ValueError("FallbackClient en az bir istemci gerektirir")
+        self._clients = list(clients)
+
+    def chat(self, messages, tools) -> AssistantMessage:
+        import logging
+
+        last_exc: Exception | None = None
+        for i, c in enumerate(self._clients):
+            try:
+                return c.chat(messages, tools)
+            except Exception as exc:  # noqa: BLE001 — sonraki arka uca geç
+                last_exc = exc
+                logging.getLogger("kuzgun.models").warning(
+                    "model arka ucu %d/%d düştü (%s); sonrakine geçiliyor",
+                    i + 1, len(self._clients), exc,
+                )
+        raise last_exc  # type: ignore[misc]

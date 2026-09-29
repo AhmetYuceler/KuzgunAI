@@ -46,6 +46,8 @@ class Config:
     max_history: int = 24  # bağlamda tutulan azami mesaj (sistem + son turlar)
     request_timeout: int = 300  # model HTTP isteği zaman aşımı (saniye)
     mcp_config_path: str = "mcp_servers.json"  # MCP sunucu tanımları
+    # C4: genel model düşerse denenecek yedek modeller (virgülle). Boş = yedek yok.
+    fallback_models: str = ""
 
 
 def _float_env(name: str, default: float) -> float:
@@ -110,4 +112,5 @@ def load_config() -> Config:
         max_history=_int_env("KUZGUN_MAX_HISTORY", d.max_history),
         request_timeout=_int_env("KUZGUN_REQUEST_TIMEOUT", d.model_timeout),
         mcp_config_path=os.environ.get("KUZGUN_MCP_CONFIG", d.mcp_config_path),
+        fallback_models=os.environ.get("KUZGUN_FALLBACK_MODELS", d.fallback_models),
     )

@@ -10,6 +10,7 @@ from kuzgun.bootstrap import (  # B3: kurulum bootstrap'te; build_default_regist
     build_registry_with_mcp,
     make_client,
     make_embedder,
+    make_general_client,
     make_memory,
 )
 from kuzgun.config import Config, load_config
@@ -133,7 +134,7 @@ class KuzgunEngine:
         # Takılınca çağrılan devretme. None ise varsayılan: Claude'a danış.
         self._escalate = escalate
         # Somut kurulum bootstrap fabrikalarında (B3); test/sunucu bağımlılık enjekte eder.
-        self.client = client if client is not None else make_client(cfg, cfg.model)
+        self.client = client if client is not None else make_general_client(cfg)
         self.embedder = embedder if embedder is not None else make_embedder(cfg)
         self.memory = memory if memory is not None else make_memory(cfg)
         # Kod-uzmanı model (kod işleri buna yönlenir); genel modelle aynı arka uç.
