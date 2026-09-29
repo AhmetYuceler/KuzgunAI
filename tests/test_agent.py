@@ -98,6 +98,30 @@ def test_escalates_on_max_steps_when_escalate_given():
     assert out == "DEVREDILDI"
 
 
+def test_budget_wrapup_summarizes_instead_of_raising():
+    # C2: wrapup=True iken max_steps dolunca çökmez/Claude'a gitmez; yerel model
+    # 'yaptıklarını özetle' turu yapıp kısmi cevap verir.
+    steps = [
+        AssistantMessage(text=None, tool_calls=[ToolCall(str(i), "echo", {"text": str(i)})])
+        for i in range(3)  # max_steps kadar tool-call turu, sonra wrap-up turu
+    ]
+    wrapup = AssistantMessage(text="Şimdiye dek 3 adım yaptım, özet: ...", tool_calls=[])
+    client = FakeModelClient([*steps, wrapup])
+    messages = [{"role": "user", "content": "uzun görev"}]
+    out = run_turn(client, messages, _registry_with_echo(), max_steps=3, wrapup=True)
+    assert "özet" in out
+    assert messages[-1] == {"role": "assistant", "content": out}
+
+
+def test_max_steps_still_raises_without_wrapup_or_escalate():
+    # Varsayılan (wrapup=False, escalate=None): eski davranış korunur (çöker).
+    import pytest as _pytest
+    loop = AssistantMessage(text=None, tool_calls=[ToolCall("1", "echo", {"text": "x"})])
+    client = FakeModelClient([loop] * 20)
+    with _pytest.raises(RuntimeError):
+        run_turn(client, [{"role": "user", "content": "?"}], _registry_with_echo(), max_steps=3)
+
+
 def test_legit_error_output_does_not_escalate():
     # B5: çıktısı "Error:" ile başlayan MEŞRU araç sonucu devretmeyi tetiklememeli.
     reg = ToolRegistry()

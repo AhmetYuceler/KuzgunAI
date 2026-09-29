@@ -147,14 +147,32 @@ def run_turn(
     confirm=None,
     max_steps: int = 10,
     escalate=None,
+    wrapup: bool = False,
 ) -> str:
-    """Ajan döngüsü. `escalate` verilirse, model döngüye girer / araçlar üst üste
-    hata verir / max_steps aşılırsa otomatik olarak uzmana (Claude) devreder."""
+    """Ajan döngüsü. `escalate` verilirse model döngüye girer / araçlar üst üste hata
+    verir / max_steps aşılırsa uzmana (Claude) devreder. `wrapup=True` ise max_steps
+    dolunca çökmek/Claude'a gitmek yerine modelden kısa bir 'yaptıklarını özetle'
+    turu istenir (C2: bütçe bitince zarif kapanış, yarım kalma yerine kısmi cevap)."""
     def _escalate_and_record() -> str:
         # A3 (bug #5): devredilen cevabı geçmişe de yaz ki sonraki turda kaybolmasın.
         reply = escalate(_last_user_text(messages))
         messages.append({"role": "assistant", "content": reply})
         return reply
+
+    def _budget_wrapup() -> str:
+        messages.append({
+            "role": "system",
+            "content": (
+                "Adım bütçen doldu. Yeni araç ÇAĞIRMA. Şimdiye dek yaptıklarını kısaca "
+                "özetle ve elde ettiğin en iyi KISMİ cevabı ver; neyin eksik kaldığını da söyle."
+            ),
+        })
+        with timed(log, "wrapup", id=turn_id):
+            final = client.chat(messages, [])
+        text = final.text or ""
+        messages.append({"role": "assistant", "content": text})
+        log.info("bütçe doldu → zarif kapanış id=%s", turn_id)
+        return text
 
     turn_id = uuid.uuid4().hex[:8]
     log.info("tur başladı id=%s mode=%s", turn_id, mode)
@@ -202,7 +220,9 @@ def run_turn(
         # Devir tetikleyicileri: döngü ya da üst üste araç hatası.
         if escalate is not None and (repeat >= 2 or err_streak >= 2):
             return _escalate_and_record()
-    # max_steps aşıldı: escalate varsa devret, yoksa hata ver.
+    # max_steps aşıldı. Öncelik: zarif kapanış (istenmişse) → devretme → hata.
+    if wrapup:
+        return _budget_wrapup()
     if escalate is not None:
         return _escalate_and_record()
     raise RuntimeError(f"max_steps ({max_steps}) aşıldı; model döngüde kaldı.")

@@ -368,7 +368,8 @@ class KuzgunEngine:
             is_code = is_code_task(message)
             active = self.coder_client if is_code else self.client
             reply = run_turn(
-                active, messages, self.registry, mode=mode, confirm=cb, escalate=esc
+                active, messages, self.registry, mode=mode, confirm=cb, escalate=esc,
+                max_steps=self.config.max_steps, wrapup=True,  # C2: bütçe bitince zarif kapanış
             )
             if self.reflect and is_code:
                 reply = self._reflect_code(messages, reply, active, mode, cb, esc)
