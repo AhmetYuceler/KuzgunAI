@@ -68,3 +68,10 @@ def test_images_dir_default_empty_means_session_temp(monkeypatch):
     assert load_config().images_dir == ""  # boş → oturumluk geçici klasör, çıkışta silinir
     monkeypatch.setenv("KUZGUN_IMAGES_DIR", "C:/kalici")
     assert load_config().images_dir == "C:/kalici"
+
+
+def test_sessions_dir_and_days(monkeypatch):
+    c = load_config()
+    assert c.sessions_dir == "data/sessions" and c.session_days == 30
+    monkeypatch.setenv("KUZGUN_SESSION_DAYS", "7")
+    assert load_config().session_days == 7

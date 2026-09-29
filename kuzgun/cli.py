@@ -15,10 +15,15 @@ from kuzgun.teacher import ask_claude
 
 
 # Argümansız yazılırsa kullanım gösterilen komutlar (argümanlısı main() içinde işlenir).
-_NEEDS_ARG = {"/hatirla": "<şey>", "/ajanlar": "<görev>", "/claude": "<soru>"}
+_NEEDS_ARG = {
+    "/hatirla": "<şey>",
+    "/ajanlar": "<görev>",
+    "/claude": "<soru>",
+    "/rename": "<ad>",
+}
 COMMANDS = (
     "/yardim", "/mod", "/plan", "/normal", "/otonom", "/claude", "/ajanlar",
-    "/hatirla", "/notlar", "/gecmis", "/cikis",
+    "/hatirla", "/notlar", "/gecmis", "/resume", "/rename", "/cikis",
 )
 
 
@@ -36,7 +41,8 @@ def handle_slash(line: str, state: dict) -> str | None:
             "Komutlar: /mod <plan|normal|otonom> (ya da kısaca /plan, /normal, /otonom; "
             "shift+tab de döndürür), /claude <soru> (uzmana danış), "
             "/ajanlar <görev> (çok adımlı işi böl-yap), /hatirla <şey>, /notlar, "
-            "/gecmis, /yardim, /cikis"
+            "/gecmis, /resume [ad|no] (eski oturuma dön), /rename <ad> (oturuma ad ver), "
+            "/yardim, /cikis"
         )
     if cmd == "/mod":
         if len(parts) < 2:
@@ -73,6 +79,57 @@ def format_history(messages: list[dict], n: int = 8) -> str:
     return "\n".join(lines)
 
 
+def format_session_list(metas: list[dict]) -> str:
+    """/resume listesi: no, ad/başlık, tarih, tur sayısı (Claude Code seçicisi gibi)."""
+    import time
+
+    if not metas:
+        return "Kayıtlı oturum yok."
+    lines = []
+    for i, m in enumerate(metas, 1):
+        when = time.strftime("%d.%m %H:%M", time.localtime(m.get("updated", 0)))
+        ad = f"{m['name']}  —  " if m.get("name") else ""
+        lines.append(f"{i:>2}. {ad}{m.get('title', '')}  [dim]({when} · {m.get('turns', 0)} tur)[/]")
+    return "\n".join(lines)
+
+
+def resume_session(engine, archive, arg: str, state: dict) -> str:
+    """/resume [ad|id|no]: oturumu geri yükler (engine.messages değişir).
+
+    Argümansızsa numaralı liste döner; kullanıcı `/resume <no>` yazar (kutu
+    açıkken araya modal input() sokmak tuşları ikiye böldüğü için seçim ayrı
+    komutla yapılır). Sistem promptu GÜNCEL tutulur; yalnız konuşma geri gelir."""
+    from kuzgun.archive import title_for
+
+    metas = archive.list()
+    if not metas:
+        return "Kayıtlı oturum yok."
+    key = (arg or "").strip()
+    if not key:
+        return (
+            "Kayıtlı oturumlar (dönmek için: /resume <no> ya da /resume <ad>):\n"
+            + format_session_list(metas)
+        )
+    if key.isdigit() and 1 <= int(key) <= len(metas):
+        meta = metas[int(key) - 1]
+    else:
+        meta = archive.find(key)
+    if meta is None:
+        return f"Oturum bulunamadı: {key}. /resume ile listeden seç."
+    messages, meta = archive.load(meta["id"])
+    if messages and messages[0].get("role") == "system":
+        messages = messages[1:]
+    engine.messages[:] = [engine.messages[0]] + messages  # sistem promptu güncel
+    state["session_id"] = meta["id"]
+    if meta.get("mode") in MODES:
+        state["mode"] = meta["mode"]
+    etiket = meta.get("name") or title_for(engine.messages)
+    return (
+        f"Oturuma dönüldü: {etiket} ({meta.get('turns', 0)} tur). "
+        f"Son konuşma:\n{format_history(engine.messages, n=4)}"
+    )
+
+
 def run_guarded(fn, *args, **kwargs) -> str:
     """Uzun işi (model/claude/ajanlar) çalıştırır; Ctrl+C'de traceback yerine
     kısa bir iptal mesajı, hatada '[hata] ...' döner. Program kapanmaz."""
@@ -97,7 +154,22 @@ def _confirm(name: str, arguments: dict) -> bool:
     return ui.confirm_in_terminal(ask)
 
 
-def main() -> None:
+def _parse_args(argv=None):
+    import argparse
+
+    ap = argparse.ArgumentParser(prog="kuzgun", description="Kişisel yerel yapay zekâ ajanı")
+    ap.add_argument(
+        "-c", "--continue", dest="cont", action="store_true", help="en son oturuma devam et"
+    )
+    ap.add_argument(
+        "-r", "--resume", nargs="?", const="", default=None, metavar="AD",
+        help="oturuma dön: ad/id ver ya da boş bırakıp listeden seç",
+    )
+    ap.add_argument("-n", "--name", default="", help="bu oturuma ad ver")
+    return ap.parse_args(argv)
+
+
+def main(argv=None) -> None:
     from rich.console import Console
     from rich.panel import Panel
 
@@ -106,9 +178,14 @@ def main() -> None:
     import atexit
 
     from kuzgun import vision
+    from kuzgun.archive import SessionArchive
 
+    args = _parse_args(argv)
     console = Console()
     engine = KuzgunEngine(confirm=_confirm)
+    # /resume arşivi: her turdan sonra konuşma diske yazılır; eskiler süpürülür.
+    archive = SessionArchive(engine.config.sessions_dir)
+    archive.sweep(engine.config.session_days)
     # alt+v resimleri: kalıcı klasör verilmediyse oturumluk geçici klasör, çıkışta
     # (/cikis, Ctrl+C, Ctrl+D) silinir; eski oturumlardan kalanlar süpürülür.
     images_dir = engine.config.images_dir
@@ -116,7 +193,12 @@ def main() -> None:
         vision.sweep_stale()
         images_dir = vision.new_session_dir()
         atexit.register(vision.cleanup_session_dir, images_dir)
-    state = {"mode": engine.config.mode, "quit": False, "images_dir": images_dir}
+    state = {
+        "mode": engine.config.mode,
+        "quit": False,
+        "images_dir": images_dir,
+        "session_id": archive.new_id(),
+    }
     console.print()
     console.print(
         ui.render_header(
@@ -124,6 +206,22 @@ def main() -> None:
         )
     )
     console.print()
+
+    def _save() -> None:
+        try:
+            archive.save(state["session_id"], engine.messages, mode=state["mode"], cwd=os.getcwd())
+            if args.name:
+                archive.rename(state["session_id"], args.name)
+        except Exception as exc:  # noqa: BLE001 — arşiv hatası sohbeti durdurmasın
+            console.print(f"[dim]arşiv uyarısı: {exc}[/]")
+
+    # Başlangıçta devam: --continue (en son) ya da --resume [ad]
+    if args.cont or args.resume is not None:
+        key = args.resume or ""
+        if args.cont:
+            son = archive.latest()
+            key = son["id"] if son else "yok"
+        ui.print_note(console, resume_session(engine, archive, key, state))
 
     def _sor(user: str, images: list[str], cancel) -> None:
         """Bir kullanıcı mesajını modele iletir; iptal edilmediyse cevabı basar."""
@@ -137,6 +235,15 @@ def main() -> None:
         Etkileşimli kutuda ayrı iş parçacığında çalışır; kutu altta kalır."""
         if user == "/gecmis":
             console.print(Panel(format_history(engine.messages), title="Geçmiş", border_style="dim"))
+            return
+        if user == "/resume" or user.startswith("/resume "):
+            ui.print_note(console, resume_session(engine, archive, user[7:].strip(), state))
+            return
+        if user.startswith("/rename "):
+            ad = user[len("/rename ") :].strip()
+            _save()
+            archive.rename(state["session_id"], ad)
+            ui.print_note(console, f"Oturum adı: {ad}")
             return
         if user == "/notlar":
             from kuzgun.notebook import load_notes
@@ -184,8 +291,10 @@ def main() -> None:
             pending = state.pop("pending", None)
             if pending:  # '/plan <görev>' → mod değişti, şimdi görevi işle
                 _sor(pending, images, cancel)
+                _save()
             return
         _sor(user, images, cancel)
+        _save()  # her turdan sonra arşive yaz (/resume için)
 
     if ui.is_interactive():
         import asyncio

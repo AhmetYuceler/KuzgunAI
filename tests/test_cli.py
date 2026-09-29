@@ -150,3 +150,70 @@ def test_run_guarded_returns_cancel_message_on_ctrl_c():
     assert "iptal" in run_guarded(boom).lower()
     assert run_guarded(lambda: "ok") == "ok"
     assert run_guarded(lambda: 1 / 0).startswith("[hata]")
+
+
+def test_resume_command_lists_and_picks(tmp_path):
+    from kuzgun.archive import SessionArchive
+    from kuzgun.cli import resume_session
+
+    a = SessionArchive(str(tmp_path))
+    sid = a.new_id()
+    a.save(sid, [{"role": "system", "content": "s"}, {"role": "user", "content": "eski soru"},
+                 {"role": "assistant", "content": "eski cevap"}])
+
+    class Eng:
+        messages = [{"role": "system", "content": "yeni sistem"}]
+
+    eng = Eng()
+    state = {"session_id": "x"}
+    # argümansız: yalnız liste (seçim ayrı komutla), oturum değişmez
+    out = resume_session(eng, a, "", state)
+    assert "eski soru" in out and "/resume <no>" in out
+    assert state["session_id"] == "x"
+    out = resume_session(eng, a, "1", state)  # numarayla seç
+    assert "eski soru" in out
+    assert state["session_id"] == sid
+    assert eng.messages[0]["content"] == "yeni sistem"  # sistem promptu güncel kalır
+    assert eng.messages[1]["content"] == "eski soru"
+
+
+def test_resume_command_by_name_and_missing(tmp_path):
+    from kuzgun.archive import SessionArchive
+    from kuzgun.cli import resume_session
+
+    a = SessionArchive(str(tmp_path))
+    sid = a.new_id()
+    a.save(sid, [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}])
+    a.rename(sid, "isim")
+
+    class Eng:
+        messages = [{"role": "system", "content": "s"}]
+
+    state = {}
+    assert "isim" in resume_session(Eng(), a, "isim", state)
+    assert state["session_id"] == sid
+    assert "bulunamadı" in resume_session(Eng(), a, "yok", {})
+    assert "yok" in resume_session(Eng(), SessionArchive(str(tmp_path / "bos")), "", {}).lower()
+
+
+def test_yardim_mentions_resume():
+    out = handle_slash("/yardim", {"mode": "normal"})
+    assert "/resume" in out and "/rename" in out
+
+
+def test_parse_args_continue_resume_name():
+    from kuzgun.cli import _parse_args
+
+    assert _parse_args(["-c"]).cont is True
+    assert _parse_args(["--resume"]).resume == ""  # boş → listeden seç
+    assert _parse_args(["--resume", "isim"]).resume == "isim"
+    assert _parse_args([]).resume is None
+    assert _parse_args(["-n", "auth"]).name == "auth"
+
+
+def test_format_session_list_numbers_and_titles():
+    from kuzgun.cli import format_session_list
+
+    out = format_session_list([{"id": "a", "name": "isim", "title": "baslik", "updated": 0, "turns": 3}])
+    assert out.startswith(" 1. isim") and "baslik" in out and "3 tur" in out
+    assert "yok" in format_session_list([]).lower()
