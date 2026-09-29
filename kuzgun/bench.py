@@ -84,6 +84,38 @@ def run_benchmark(tasks, local_fn, claude_fn, judge) -> list[dict]:
     return results
 
 
+def run_ab(tasks, a_fn, b_fn, judge, a_name: str = "A", b_name: str = "B") -> list[dict]:
+    """C12: AYNI sistemin iki varyantını (ör. bir özellik açık vs kapalı) karşılaştırır.
+    a_fn/b_fn(prompt)->cevap. Hakem A/B yer değiştirmeli sorulur (konum yanlılığı).
+    Kazanan a_name / b_name / 'tie'. Her yeni özellik böyle ölçülür."""
+    results = []
+    for t in tasks:
+        ans_a = a_fn(t["prompt"])
+        ans_b = b_fn(t["prompt"])
+        v1 = judge_pair(t["prompt"], ans_a, ans_b, judge)  # A=a, B=b
+        v2 = judge_pair(t["prompt"], ans_b, ans_a, judge)  # A=b, B=a (swap)
+        a_pts = (1 if v1 == "A" else 0) + (1 if v2 == "B" else 0)
+        b_pts = (1 if v1 == "B" else 0) + (1 if v2 == "A" else 0)
+        winner = a_name if a_pts > b_pts else b_name if b_pts > a_pts else "tie"
+        results.append({
+            "id": t["id"], "category": t.get("category", "genel"), "prompt": t["prompt"],
+            a_name: ans_a, b_name: ans_b, "winner": winner,
+        })
+    return results
+
+
+def summarize_ab(results: list[dict], a_name: str, b_name: str) -> dict:
+    overall = {a_name: 0, b_name: 0, "tie": 0, "total": 0}
+    by_cat: dict[str, dict] = defaultdict(lambda: {a_name: 0, b_name: 0, "tie": 0, "total": 0})
+    for r in results:
+        w = r["winner"]
+        overall[w] = overall.get(w, 0) + 1
+        overall["total"] += 1
+        by_cat[r["category"]][w] = by_cat[r["category"]].get(w, 0) + 1
+        by_cat[r["category"]]["total"] += 1
+    return {"overall": overall, "by_category": dict(by_cat)}
+
+
 def summarize(results: list[dict]) -> dict:
     overall = {"kuzgun": 0, "claude": 0, "tie": 0, "total": 0}
     by_cat: dict[str, dict] = defaultdict(
