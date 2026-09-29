@@ -1,5 +1,53 @@
 from kuzgun.embeddings import FakeEmbedder
-from kuzgun.memory import Memory, recall_context
+from kuzgun.memory import Memory, MemoryStore, recall_context
+
+
+class _DimEmbedder:
+    """Sabit boyutlu deterministik embedder (boyut uyumsuzluğu testleri için)."""
+
+    def __init__(self, dim, model="dim-test"):
+        self.dim = dim
+        self.model = model
+
+    def embed(self, text):
+        v = [0.0] * self.dim
+        for i, ch in enumerate(text):
+            v[i % self.dim] += ord(ch) % 7
+        return v
+
+
+class _AxisEmbedder:
+    """Metnin ilk harfine göre tek bir eksene 1 koyar → ilgisiz metinler ortogonal."""
+
+    model = "axis"
+
+    def embed(self, text):
+        v = [0.0] * 5
+        v[(ord(text.strip()[:1] or "a") % 5)] = 1.0
+        return v
+
+
+def test_memory_store_protocol():
+    assert isinstance(Memory(":memory:"), MemoryStore)
+
+
+def test_search_skips_dimension_mismatch():
+    # B7: embedding modeli değişince (boyut farkı) eski kayıtlar sessiz çöp üretmesin.
+    m = Memory(":memory:")
+    m.add("eski kayit", "eski cevap", _DimEmbedder(3))
+    hits = m.search("eski kayit", _DimEmbedder(8), k=5)  # farklı boyut
+    assert hits == []  # uyumsuz boyut atlandı, çökme yok
+
+
+def test_min_score_filters_irrelevant():
+    # B7: eşik altındaki (alakasız) hatıralar geri çağrılmamalı.
+    m = Memory(":memory:")
+    e = _AxisEmbedder()
+    m.add("apple", "meyve", e)     # 'a' ekseni
+    m.add("xyz", "alakasiz", e)    # farklı eksen (ortogonal)
+    hits = m.search("apple", e, k=5, min_score=0.5)
+    assert len(hits) == 1
+    assert hits[0]["user"] == "apple"
 
 
 def test_recall_empty_returns_empty_string():
