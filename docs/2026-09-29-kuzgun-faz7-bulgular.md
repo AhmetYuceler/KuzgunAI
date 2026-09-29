@@ -49,3 +49,12 @@ akıl/kod görevinde 7B açıkça kaybetmedi.
   elverirse **daha büyük MoE model** (Qwen3-Coder-30B-A3B) 24GB+ üzerinde.
 - Bu bulgular ileriki fazların (L2) yol haritası: coder-model, ön-yönlendirme,
   doğrulayıcı-yansıtma (build/test geri beslemesi), LoRA.
+
+## L2 güncellemesi (yapıldı)
+- **Karmaşıklık ön-yönlendirmesi** (`router.py`): "react / vite / npm / proje kur /
+  refactor" gibi açıkça zor işler baştan Claude'a yönlendiriliyor (yerel 7B'nin
+  boşa uğraşması engelleniyor). `KUZGUN_AUTOROUTE=0` ile kapatılabilir.
+- **Araç-kullanım promptu güçlendirildi** → **empirik sonuç:** aynı 7B model, "dosyaya
+  şunu yaz (write_file kullan)" görevinde artık **aracı gerçekten çağırıyor** ve dosyayı
+  oluşturuyor (önceki bulguda sadece "yapacağım" deyip bırakıyordu). Basit ajanik
+  eylemlerde belirgin iyileşme.

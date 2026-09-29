@@ -23,7 +23,6 @@ _HARD_PATTERNS = (
     "yeniden yapılandır",
     "mimari kur",
     "çok dosya",
-    "tailwind",
 )
 
 
