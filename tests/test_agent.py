@@ -59,6 +59,45 @@ def test_max_steps_guard():
         run_turn(client, [{"role": "user", "content": "?"}], _registry_with_echo(), max_steps=3)
 
 
+def test_escalates_on_repeated_identical_tool_call():
+    # Model aynı araç çağrısını tekrarlıyor (döngü) -> otonom devretme çağrılmalı
+    loop_msg = AssistantMessage(text=None, tool_calls=[ToolCall("1", "echo", {"text": "x"})])
+    client = FakeModelClient([loop_msg] * 20)
+    escalated = {}
+
+    def escalate(question):
+        escalated["q"] = question
+        return "UZMAN CEVABI"
+
+    out = run_turn(
+        client,
+        [{"role": "user", "content": "zor soru"}],
+        _registry_with_echo(),
+        max_steps=10,
+        escalate=escalate,
+    )
+    assert out == "UZMAN CEVABI"
+    assert "zor soru" in escalated["q"]
+
+
+def test_escalates_on_max_steps_when_escalate_given():
+    loop_msg = AssistantMessage(text=None, tool_calls=[ToolCall("1", "echo", {"text": "x"})])
+    # Her adımda argüman değişsin ki döngü değil, sadece max_steps tetiklensin
+    msgs = [
+        AssistantMessage(text=None, tool_calls=[ToolCall(str(i), "echo", {"text": str(i)})])
+        for i in range(20)
+    ]
+    client = FakeModelClient(msgs)
+    out = run_turn(
+        client,
+        [{"role": "user", "content": "?"}],
+        _registry_with_echo(),
+        max_steps=3,
+        escalate=lambda q: "DEVREDILDI",
+    )
+    assert out == "DEVREDILDI"
+
+
 def _spy_registry():
     """Çağrılınca kaydeden, değişiklik yapan (mutating) bir araç."""
     reg = ToolRegistry()
