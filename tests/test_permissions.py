@@ -34,3 +34,12 @@ def test_normal_mode_mutating_denied_when_rejected():
 def test_autonomous_mode_allows_mutating():
     ok, msg = is_allowed("run_command", {}, mutating=True, mode="otonom")
     assert ok is True
+
+
+def test_unknown_mode_blocks_mutating_even_with_confirm():
+    # Tanınmayan bir mod, onay geri çağırması "evet" dese bile en kısıtlayıcı
+    # (engelle) tarafa düşmeli — güvenli varsayılan.
+    ok, msg = is_allowed(
+        "write_file", {}, mutating=True, mode="belirsiz", confirm=lambda n, a: True
+    )
+    assert ok is False and msg is not None
