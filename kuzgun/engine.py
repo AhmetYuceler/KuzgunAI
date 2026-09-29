@@ -18,6 +18,7 @@ from kuzgun.router import (
     is_code_task,
     is_compound,
 )
+from kuzgun.sessions import SessionStore
 from kuzgun.teacher import ask_claude
 from kuzgun.tools import ToolRegistry
 from kuzgun.verify import check_python_syntax, extract_code_blocks
@@ -147,8 +148,13 @@ class KuzgunEngine:
             except Exception:  # noqa: BLE001
                 pass
         self.messages: list[dict] = self._new_history()
-        self._sessions: dict[str, list[dict]] = {}
-        self._slock = threading.Lock()
+        self._store = SessionStore(self._new_history)  # isimli oturumlar (izole + kilitli)
+        self._default_lock = threading.Lock()  # session_id=None (ana konuşma) için
+
+    @property
+    def _sessions(self) -> dict[str, list[dict]]:
+        """Geriye dönük erişim: isimli oturumların altta yatan sözlüğü."""
+        return self._store.sessions
 
     @staticmethod
     def _is_notes(msg: dict) -> bool:
@@ -211,8 +217,7 @@ class KuzgunEngine:
             try:
                 return self.chat(subtask, mode=mode, confirm=confirm, session_id=sid)
             finally:
-                with self._slock:
-                    self._sessions.pop(sid, None)  # tek kullanımlık; birikmesin
+                self._store.drop(sid)  # tek kullanımlık; birikmesin
 
         def synth_fn(t, results):
             return _synth_with_model(t, results, self.client)
@@ -232,8 +237,7 @@ class KuzgunEngine:
     def history(self, session_id: str | None = None) -> list[dict]:
         if session_id is None:
             return self.messages
-        with self._slock:
-            return self._sessions.setdefault(session_id, self._new_history())
+        return self._store.get(session_id)
 
     def _trim(self, messages: list[dict]) -> None:
         if len(messages) <= self.MAX_HISTORY:
@@ -254,15 +258,19 @@ class KuzgunEngine:
         confirm=None,
         session_id: str | None = None,
     ) -> str:
-        messages = self.history(session_id)
-        self._sync_notes(messages)
-        # A3 (bug #6): turda hata olursa bu noktaya geri sar; yarım/sarkan mesaj kalmasın.
-        checkpoint = len(messages)
-        try:
-            return self._run_chat(messages, message, mode, confirm)
-        except Exception:
-            del messages[checkpoint:]
-            raise
+        # A4 (bug #10): tur boyunca oturum kilidini tut → aynı oturuma eşzamanlı
+        # istekler geçmişi bozmaz.
+        lock = self._default_lock if session_id is None else self._store.lock(session_id)
+        with lock:
+            messages = self.history(session_id)
+            self._sync_notes(messages)
+            # A3 (bug #6): turda hata olursa bu noktaya geri sar; sarkan mesaj kalmasın.
+            checkpoint = len(messages)
+            try:
+                return self._run_chat(messages, message, mode, confirm)
+            except Exception:
+                del messages[checkpoint:]
+                raise
 
     def _run_chat(self, messages, message, mode, confirm) -> str:
         cb = confirm if confirm is not None else self.confirm
