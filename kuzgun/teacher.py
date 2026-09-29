@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 
@@ -8,12 +9,20 @@ def _default_runner(question: str) -> str:
     """`claude` CLI'ı etkileşimsiz (--print) çağırır ve cevabı döndürür.
 
     Kullanıcının Claude Max üyeliğiyle çalışır; ayrı API anahtarı gerekmez.
+
+    Güvenlik: (a) soru argv yerine stdin'den verilir → argüman enjeksiyonu olmaz;
+    (b) geçerli dizindeki bir 'claude' çalıştırılmaz → Windows yol-kaçırma koruması.
     """
     exe = shutil.which("claude.cmd") or shutil.which("claude")
     if not exe:
         return "Error: 'claude' komutu bulunamadı."
+    exe_abs = os.path.abspath(exe)
+    cwd = os.getcwd()
+    if exe_abs == cwd or exe_abs.startswith(cwd + os.sep):
+        return "Error: güvenlik: geçerli dizindeki 'claude' çalıştırılmaz."
     proc = subprocess.run(
-        [exe, "--print", question],
+        [exe_abs, "--print"],
+        input=question,
         capture_output=True,
         text=True,
         encoding="utf-8",
