@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 
 @dataclass
@@ -15,6 +16,17 @@ class ToolCall:
 class AssistantMessage:
     text: str | None
     tool_calls: list[ToolCall] = field(default_factory=list)
+
+
+@runtime_checkable
+class ModelClient(Protocol):
+    """Bir dil modeli istemcisinin sözleşmesi: mesaj+araç al, AssistantMessage döndür.
+
+    OllamaClient (gerçek) ve FakeModelClient (test) bu şekli sağlar; ileride
+    Claude/vLLM istemcileri de aynı sözleşmeye uyar.
+    """
+
+    def chat(self, messages, tools) -> "AssistantMessage": ...
 
 
 def _parse_arguments(raw: str | None) -> dict:

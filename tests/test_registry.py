@@ -31,3 +31,25 @@ def test_bad_arguments_returns_error():
     reg.register(SCHEMA, lambda text: text)
     # 'text' eksik -> TypeError yakalanmalı
     assert reg.execute("echo", {}).startswith("Error:")
+
+
+def test_mutating_flag_defaults_false_and_can_be_set():
+    reg = ToolRegistry()
+    reg.register(SCHEMA, lambda text: text)  # varsayılan: okuyan
+    reg.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "yaz",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        lambda: "ok",
+        mutating=True,
+    )
+    assert reg.is_mutating("echo") is False
+    assert reg.is_mutating("yaz") is True
+
+
+def test_is_mutating_unknown_is_false():
+    assert ToolRegistry().is_mutating("yok") is False

@@ -34,3 +34,9 @@ def test_parse_arguments_malformed_returns_empty_dict():
 
 def test_parse_arguments_non_object_returns_empty_dict():
     assert _parse_arguments("[1, 2, 3]") == {}
+
+
+def test_clients_satisfy_modelclient_protocol():
+    from kuzgun.models import ModelClient
+
+    assert isinstance(FakeModelClient([]), ModelClient)
