@@ -66,6 +66,24 @@ def test_non_code_tasks_not_detected():
         assert not is_code_task(msg), msg
 
 
+def test_no_substring_false_positives():
+    # A8 (bug #11): anahtar kelime bir başka kelimenin ORTASINDA/İÇİNDE geçince
+    # eşleşmemeli.
+    assert detect_media_intent("işe commute ederken dinledim") is None  # 'mute' değil
+    assert not is_code_task("this was a big reaction to the news")       # 'react' değil
+    assert not is_code_task("doktor bana bir prescription yazdı")        # 'script' değil
+    assert classify_complexity("bu bir reaksiyon testi")[0] == "kolay"   # 'react' yok
+
+
+def test_word_start_and_turkish_suffixes_still_match():
+    # Kelime başındaki anahtar + Türkçe ek ekli haller yine eşleşmeli.
+    assert is_code_task("şu python'da bir şey")           # ek: 'python'da'
+    assert is_code_task("bu kodu incele")                  # ek: 'kodu'
+    assert is_code_task("main.py dosyasını aç")            # uzantı: '.py'
+    assert detect_media_intent("sesi kapat") == "mute"     # gerçek mute komutu
+    assert classify_complexity("bir react uygulaması kur")[0] == "zor"
+
+
 def test_is_compound_detects_multiple_questions():
     from kuzgun.router import is_compound
 

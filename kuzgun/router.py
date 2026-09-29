@@ -2,6 +2,26 @@ from __future__ import annotations
 
 import re
 
+# Kelime karakterleri (Türkçe harfler dahil). Anahtar kelime bir kelimenin
+# ORTASINDA geçtiğinde eşleşmesin diye başına bu sınıf için negatif lookbehind
+# koyarız; sonuna ek gelmesine izin verilir (Türkçe: 'kodu', 'python'da').
+_WORD = "0-9a-zçğıöşüâîû_"
+
+
+def _matches(low: str, pattern: str) -> bool:
+    """`pattern`, `low` içinde bir kelime BAŞINDA geçiyor mu?
+
+    Harfle başlayan kalıplar kelime sınırına duyarlıdır ('mute' → 'commute'u
+    yakalamaz). Harf-dışıyla başlayanlar (ör. '.py' uzantısı) alt-dize olarak
+    aranır (dosya adının içinde geçebilsin: 'main.py')."""
+    if pattern[:1].isalpha():
+        return re.search(rf"(?<![{_WORD}]){re.escape(pattern)}", low) is not None
+    return pattern in low
+
+
+def _matches_any(low: str, patterns) -> bool:
+    return any(_matches(low, p) for p in patterns)
+
 # Açıkça "zor / çok-adımlı ajanik" işaret eden kalıplar. Yerel 7B model bunlarda
 # güvenilmez olduğu için (bkz. Faz 7 bulgular) doğrudan uzmana (Claude) yönlendirilir.
 _HARD_PATTERNS = (
@@ -36,7 +56,7 @@ def classify_complexity(message: str) -> tuple[str, str | None]:
     """
     low = message.lower()
     for pat in _HARD_PATTERNS:
-        if pat in low:
+        if _matches(low, pat):
             return "zor", pat
     return "kolay", None
 
@@ -70,7 +90,7 @@ _CODE_SUBSTR = (
 def is_code_task(message: str) -> bool:
     """Mesaj bir kodlama işi mi? (kod-uzmanı modele yönlendirmek için)."""
     low = message.lower()
-    return any(s in low for s in _CODE_SUBSTR)
+    return _matches_any(low, _CODE_SUBSTR)
 
 
 # Medya/müzik niyeti → doğrudan media_control action'ı (7B'nin araç seçimine güvenmeden).
@@ -92,7 +112,7 @@ def detect_media_intent(message: str) -> str | None:
     """Mesaj net bir medya komutuysa (müziği değiştir, sesi aç…) action döner; değilse None."""
     low = message.lower()
     for action, phrases in _MEDIA_INTENTS:
-        if any(p in low for p in phrases):
+        if _matches_any(low, phrases):
             return action
     return None
 
@@ -107,7 +127,7 @@ _WEATHER_PHRASES = (
 def detect_weather_intent(message: str) -> bool:
     """Mesaj bir hava durumu sorusu mu?"""
     low = message.lower()
-    return any(p in low for p in _WEATHER_PHRASES)
+    return _matches_any(low, _WEATHER_PHRASES)
 
 
 def is_compound(message: str) -> bool:
