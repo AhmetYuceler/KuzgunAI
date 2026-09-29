@@ -22,7 +22,7 @@ def handle_slash(line: str, state: dict) -> str | None:
     if cmd == "/yardim":
         return (
             "Komutlar: /mod <plan|normal|otonom>, /claude <soru> (uzmana danış), "
-            "/yardim, /cikis"
+            "/gecmis, /yardim, /cikis"
         )
     if cmd == "/mod":
         if len(parts) < 2:
@@ -35,6 +35,20 @@ def handle_slash(line: str, state: dict) -> str | None:
     return f"Bilinmeyen komut: {cmd}. /yardim yaz."
 
 
+def format_history(messages: list[dict], n: int = 8) -> str:
+    """Son n kullanıcı/asistan turunu okunabilir metne çevirir (sistem hariç)."""
+    turns = [m for m in messages if m.get("role") in ("user", "assistant")]
+    recent = turns[-n:]
+    if not recent:
+        return "Geçmiş boş."
+    lines = []
+    for m in recent:
+        who = "sen" if m["role"] == "user" else "kuzgun"
+        content = (m.get("content", "") or "").strip().replace("\n", " ")
+        lines.append(f"[{who}] {content[:200]}")
+    return "\n".join(lines)
+
+
 def _confirm(name: str, arguments: dict) -> bool:
     print(f"\n[onay] Kuzgun '{name}' çalıştırmak istiyor: {arguments}")
     ans = input("İzin veriyor musun? (e/h) ").strip().lower()
@@ -42,22 +56,39 @@ def _confirm(name: str, arguments: dict) -> bool:
 
 
 def main() -> None:
-    # Tek çekirdek: motor. CLI etkileşimli onayı sağlar; hafıza/araç/döngü motorda.
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+
+    console = Console()
     engine = KuzgunEngine(confirm=_confirm)
     state = {"mode": "normal", "quit": False}
-    print(f"Kuzgun hazır (mod: {state['mode']}). /yardim ile komutlar, /cikis ile çık.")
+    console.print(
+        Panel.fit(
+            "[bold]🦅 Kuzgun[/] hazır — kişisel yerel yapay zekâ ajanın\n"
+            "[dim]/yardim · /mod · /claude · /gecmis · /cikis[/]",
+            border_style="cyan",
+        )
+    )
     while True:
+        # Girişi düz input() ile alıyoruz (rich console.input non-tty/pipe'ta sorunlu).
+        console.print(f"\n[bold cyan]\\[{state['mode']}] sen>[/] ", end="")
         try:
-            user = input(f"\n[{state['mode']}] sen> ").strip()
+            user = input().replace("﻿", "").strip()  # olası BOM'u temizle
         except (EOFError, KeyboardInterrupt):
             break
         if not user:
             continue
+        if user == "/gecmis":
+            console.print(Panel(format_history(engine.messages), title="Geçmiş", border_style="dim"))
+            continue
         if user.startswith("/claude "):
             soru = user[len("/claude ") :].strip()
-            cevap = ask_claude(soru)
-            print(f"\n[claude] {cevap}")
-            if cevap and not cevap.startswith("Error:"):  # hataları öğrenme
+            with console.status("[dim]Claude'a danışılıyor...[/]"):
+                cevap = ask_claude(soru)
+            console.print("[bold magenta]claude>[/]")
+            console.print(Markdown(cevap))
+            if cevap and not cevap.startswith("Error:"):
                 try:
                     engine.memory.add(soru, cevap, engine.embedder)
                 except Exception:
@@ -65,15 +96,17 @@ def main() -> None:
             continue
         slash = handle_slash(user, state)
         if slash is not None:
-            print(slash)
+            console.print(f"[yellow]{slash}[/]")
             if state["quit"]:
                 break
             continue
+        console.print("[dim]düşünüyor...[/]")
         try:
             cevap = engine.chat(user, mode=state["mode"])
         except Exception as exc:
             cevap = f"[hata] {exc}"
-        print(f"\nkuzgun> {cevap}")
+        console.print("[bold green]kuzgun>[/]")
+        console.print(Markdown(cevap))
 
 
 if __name__ == "__main__":

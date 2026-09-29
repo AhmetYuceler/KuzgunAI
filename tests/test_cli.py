@@ -75,6 +75,26 @@ def test_inject_memory_empty_adds_nothing():
     assert messages == []
 
 
+def test_format_history_shows_recent_turns():
+    from kuzgun.cli import format_history
+
+    msgs = [
+        {"role": "system", "content": "sistem promptu"},
+        {"role": "user", "content": "soru bir"},
+        {"role": "assistant", "content": "cevap bir"},
+    ]
+    out = format_history(msgs)
+    assert "soru bir" in out
+    assert "cevap bir" in out
+    assert "sistem promptu" not in out  # sistem mesajı gösterilmez
+
+
+def test_format_history_empty():
+    from kuzgun.cli import format_history
+
+    assert "boş" in format_history([{"role": "system", "content": "x"}]).lower()
+
+
 def test_registry_has_ask_expert_read_only():
     reg = build_default_registry()
     names = [s["function"]["name"] for s in reg.schemas()]
