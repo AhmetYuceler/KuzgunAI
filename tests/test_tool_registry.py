@@ -52,6 +52,27 @@ def test_duplicate_registration_raises():
         reg.register(_schema("x", {}), lambda: "2")
 
 
+def test_additional_properties_allows_extra_keys():
+    # Reviewer #4: şema additionalProperties:true ise fazladan anahtar reddedilmemeli
+    # (serbest şemalı MCP araçları için).
+    reg = ToolRegistry()
+    seen = {}
+    schema = {
+        "type": "function",
+        "function": {
+            "name": "serbest",
+            "parameters": {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "additionalProperties": True,
+            },
+        },
+    }
+    reg.register(schema, lambda **kw: seen.update(kw) or "ok")
+    assert reg.execute("serbest", {"a": "1", "b": "2"}) == "ok"
+    assert seen == {"a": "1", "b": "2"}
+
+
 def test_remember_is_mutating_in_default_registry():
     # A6 (bug #2): remember kalıcı nota yazar ve bu not her gelecek sistem promptuna
     # enjekte edilir -> model onaysız yazamamalı (mutating -> izin kapısına tabi).

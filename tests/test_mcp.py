@@ -142,6 +142,28 @@ def test_load_mcp_namespaces_by_server_name_and_logs_error(tmp_path, caplog):
     assert any("bozuk" in r.message for r in caplog.records)  # hata yutulmadı, loglandı
 
 
+def test_load_mcp_skips_server_without_name(tmp_path, caplog):
+    # Reviewer #3: isimsiz sunucu namespace'lenemez -> güvenle atlanmalı ve loglanmalı
+    # (yerleşik aracı çıplak adla ezme riski oluşmasın).
+    import json as _json
+    import logging
+
+    from kuzgun.mcp import load_mcp_servers
+
+    server = os.path.join(os.path.dirname(__file__), "mcp_echo_server.py")
+    cfg = tmp_path / "mcp.json"
+    cfg.write_text(
+        _json.dumps({"servers": [{"command": [sys.executable, server]}]}),  # name yok
+        encoding="utf-8",
+    )
+    reg = ToolRegistry()
+    with caplog.at_level(logging.WARNING):
+        names = load_mcp_servers(reg, str(cfg))
+    assert names == []
+    assert not reg.has("echo")
+    assert any("name" in r.message.lower() or "isim" in r.message.lower() for r in caplog.records)
+
+
 def test_stdio_integration_with_real_subprocess():
     # Gerçek bir alt-süreç MCP sunucusuna stdio üzerinden bağlanıp araç çağırır.
     server = os.path.join(os.path.dirname(__file__), "mcp_echo_server.py")

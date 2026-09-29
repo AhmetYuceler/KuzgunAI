@@ -152,6 +152,11 @@ def load_mcp_servers(registry, config_path: str = "mcp_servers.json") -> list[st
     registered: list[str] = []
     for srv in data.get("servers", []):
         name = srv.get("name", "")
+        if not name:
+            # İsimsiz sunucu namespace'lenemez → araçları yerleşiği çıplak adla
+            # ezebilir. Güvenli taraf: atla ve logla (reviewer #3).
+            log.warning("MCP sunucusu atlandı: 'name' alanı zorunlu (namespace için).")
+            continue
         try:
             transport = StdioTransport(srv["command"])
             transport.start()

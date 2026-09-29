@@ -52,6 +52,28 @@ def test_cap_evicts_least_recently_used():
     assert "a" in s.sessions and "c" in s.sessions
 
 
+def test_pinned_session_not_evicted():
+    # Reviewer #1: tur ortasındaki (pinned) oturum eviction ile ATILMAMALI; aksi
+    # halde lock() yeni bir kilit uydurur ve aynı oturuma iki tur girer (bug #10 geri gelir).
+    s = SessionStore(factory=list, max_sessions=1)
+    s.pin("A")
+    lock_a = s.lock("A")
+    s.get("B")
+    s.get("C")                        # kapasite aşıldı ama A pinli -> atılmaz
+    assert "A" in s.sessions
+    assert s.lock("A") is lock_a       # AYNI kilit, uydurulmadı
+    s.unpin("A")
+
+
+def test_unpinned_session_evicted_normally():
+    s = SessionStore(factory=list, max_sessions=1)
+    s.pin("A")
+    s.unpin("A")                      # artık serbest
+    s.get("B")
+    s.get("C")
+    assert "A" not in s.sessions       # pin kalkınca normal LRU ile atılır
+
+
 def test_concurrent_same_session_not_corrupted(make_engine):
     # A4 (bug #10): aynı oturuma eşzamanlı chat çağrıları geçmişi bozmamalı.
     from kuzgun.models import AssistantMessage, FakeModelClient

@@ -4,10 +4,12 @@ from collections.abc import Callable
 
 
 def _allowed_keys(schema: dict) -> set[str] | None:
-    """Şemadaki izinli parametre adları. `properties` tanımlı değilse None
-    (doğrulama atlanır — MCP gibi serbest şemalar için geriye dönük güvenli)."""
+    """Şemadaki izinli parametre adları. Doğrulama atlanır (None döner) eğer:
+    - `properties` tanımlı değilse (serbest şema), ya da
+    - `additionalProperties` açıkça True ise (şema fazladan anahtara izin veriyor).
+    İkisi de MCP gibi serbest şemalarla geriye dönük uyum içindir."""
     params = schema.get("function", {}).get("parameters", {})
-    if "properties" not in params:
+    if "properties" not in params or params.get("additionalProperties") is True:
         return None
     return set(params["properties"].keys())
 

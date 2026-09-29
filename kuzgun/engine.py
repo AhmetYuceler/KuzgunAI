@@ -262,8 +262,19 @@ class KuzgunEngine:
         session_id: str | None = None,
     ) -> str:
         # A4 (bug #10): tur boyunca oturum kilidini tut → aynı oturuma eşzamanlı
-        # istekler geçmişi bozmaz.
-        lock = self._default_lock if session_id is None else self._store.lock(session_id)
+        # istekler geçmişi bozmaz. Ayrıca oturumu pinle ki başka bir oturumun
+        # eviction'ı bu turu ortada atıp kilidini yok etmesin (reviewer #1).
+        if session_id is None:
+            return self._locked_turn(self._default_lock, None, message, mode, confirm)
+        self._store.pin(session_id)
+        try:
+            return self._locked_turn(
+                self._store.lock(session_id), session_id, message, mode, confirm
+            )
+        finally:
+            self._store.unpin(session_id)
+
+    def _locked_turn(self, lock, session_id, message, mode, confirm) -> str:
         with lock:
             messages = self.history(session_id)
             self._sync_notes(messages)

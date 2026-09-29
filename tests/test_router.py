@@ -84,6 +84,13 @@ def test_word_start_and_turkish_suffixes_still_match():
     assert classify_complexity("bir react uygulaması kur")[0] == "zor"
 
 
+def test_compound_tech_words_still_code(  ):
+    # Reviewer #2: 'sql' bileşik kelimede de kod işi sayılmalı (regresyon önleme).
+    assert is_code_task("mysql ile tablo oluştur")
+    assert is_code_task("postgresql sorgusu yaz")
+    assert is_code_task("nosql veritabanı")
+
+
 def test_is_compound_detects_multiple_questions():
     from kuzgun.router import is_compound
 
