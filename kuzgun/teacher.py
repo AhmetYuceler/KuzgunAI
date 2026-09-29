@@ -16,6 +16,8 @@ def _default_runner(question: str) -> str:
         [exe, "--print", question],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=180,
     )
     if proc.returncode != 0:
