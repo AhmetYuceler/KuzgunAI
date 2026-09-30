@@ -21,7 +21,10 @@ from kuzgun.repl import (
     format_history,
     handle_slash,
 )
+from kuzgun.logging_setup import get_logger
 from kuzgun.teacher import ask_claude
+
+log = get_logger("cli")
 
 __all__ = [
     "main", "handle_slash", "format_history", "COMMANDS", "COMMAND_HELP",
@@ -113,7 +116,9 @@ def init_command(engine, root: str, state: dict, progress=None) -> str:
         out = engine.client.chat([{"role": "user", "content": prompt}], None)
         return out.text or "" if isinstance(out, AssistantMessage) else str(out)
 
+    log.info("proje analizi (/init) başladı: %s", root)
     _, report = init_project(root, model_fn, progress=progress)
+    log.info("proje analizi bitti: %s", report.replace("\n", " ")[:200])
     notes = load_project_notes(root)
     ctx = f"{_PROJECT_HEADER} {root}\\KUZGUN.md]\n{notes}" if notes else None
     engine.extra_context = ctx  # yeni oturumlar için
@@ -305,6 +310,12 @@ def main(argv=None) -> None:
             cevap = run_guarded(init_command, engine, root, state, progress=_prog)
             if not cancel.is_set():
                 ui.print_note(console, cevap, style="green")
+            # Kullanıcı DÜZ CÜMLEYLE istediyse (bare /init /analiz değil), asıl soruyu
+            # da yanıtla: harita artık bağlamda → "analiz et ve bana ANLAT" iki iştir.
+            # Yoksa sadece "KUZGUN.md yazıldı" deyip bilgiyi vermeden bırakıyordu.
+            if user not in ("/init", "/analiz") and not cancel.is_set():
+                _sor(user, images, cancel)
+                _save()
             return
         if user == "/resume" or user.startswith("/resume "):
             ui.print_note(console, resume_session(engine, archive, user[7:].strip(), state))
