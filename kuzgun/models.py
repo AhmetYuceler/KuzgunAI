@@ -79,7 +79,7 @@ class OpenAICompatBackend:
 
     def __init__(
         self,
-        model: str = "qwen2.5:7b-instruct",
+        model: str = "huihui_ai/qwen3-abliterated:8b",
         base_url: str = "http://localhost:11434/v1",
         timeout: float = 300,
         api_key: str = "ollama",

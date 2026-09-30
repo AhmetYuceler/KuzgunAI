@@ -15,7 +15,7 @@ class Config:
     KUZGUN_HOME altına mutlaklaştırılır.
     """
 
-    model: str = "qwen2.5:7b-instruct"
+    model: str = "huihui_ai/qwen3-abliterated:8b"  # uncensored Qwen3-8B (varsayılan genel model)
     coder_model: str = "qwen2.5-coder:7b-instruct"  # kod işleri bu modele gider
     embed_model: str = "nomic-embed-text"
     ollama_url: str = "http://localhost:11434/v1"

@@ -16,7 +16,7 @@ def test_defaults(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     c = load_config()
     assert isinstance(c, Config)
-    assert c.model == "qwen2.5:7b-instruct"
+    assert c.model == "huihui_ai/qwen3-abliterated:8b"
     assert c.embed_model == "nomic-embed-text"
     assert c.db_path == "data/memory.db"
     assert c.port == 8000
