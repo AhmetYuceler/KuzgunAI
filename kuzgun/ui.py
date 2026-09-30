@@ -36,6 +36,13 @@ _ANSI = {"yellow": "ansiyellow", "green": "ansigreen", "red": "ansired"}
 _HINT = 'Bir şey yaz · alt+v pano resmi ekler · örn. "bu klasördeki testleri çalıştır"'
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
+
+def _esc(s) -> str:
+    """prompt_toolkit HTML içine gömülecek DİNAMİK metni kaçırır. Durum barındaki
+    araç aktivitesi (komut/yol/desen) '<', '>', '&' içerebiliyor ve bunlar HTML
+    (minidom) ayrıştırmasını kırıp tüm uygulamayı çökertiyordu."""
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 _LOOP: asyncio.AbstractEventLoop | None = None  # etkileşimli döngü (confirm için)
 
 
@@ -292,13 +299,13 @@ def make_session(state: dict, commands=None, arg_choices=None, needs_arg=None, *
         parts = [f"<b><style fg='{color}'>▶▶ {mode} mod</style></b><dim> (shift+tab)</dim>"]
         if state.get("busy"):
             frame = _SPINNER[int(time.time() * 10) % len(_SPINNER)]
-            parts.append(f"<style fg='ansimagenta'>{frame} {state['busy']}</style><dim> (Ctrl+C iptal)</dim>")
+            parts.append(f"<style fg='ansimagenta'>{frame} {_esc(state['busy'])}</style><dim> (Ctrl+C iptal)</dim>")
         if state["queue"]:
             parts.append(f"<dim>⏳ sırada {len(state['queue'])} mesaj</dim>")
         if state["attachments"]:
             parts.append(f"<dim>🖼 {len(state['attachments'])} resim ekli</dim>")
         if state.get("flash"):
-            parts.append(f"<style fg='ansiyellow'>{state.pop('flash')}</style>")
+            parts.append(f"<style fg='ansiyellow'>{_esc(state.pop('flash'))}</style>")
         return HTML(f"<rule>{rule}</rule>\n  " + "<dim> · </dim>".join(parts))
 
     style = Style.from_dict(
