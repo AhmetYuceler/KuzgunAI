@@ -26,7 +26,7 @@ _NEEDS_ARG = {
 }
 COMMANDS = (
     "/yardim", "/init", "/mod", "/plan", "/normal", "/otonom", "/claude", "/ajanlar",
-    "/hatirla", "/notlar", "/gecmis", "/resume", "/rename", "/cikis",
+    "/hatirla", "/notlar", "/gecmis", "/resume", "/rename", "/doktor", "/fork", "/cikis",
 )
 # '/' menüsünde komutun yanında soluk görünen açıklamalar (Claude Code'daki gibi).
 COMMAND_HELP = {
@@ -43,6 +43,8 @@ COMMAND_HELP = {
     "/gecmis": "bu oturumun son konuşmasını göster",
     "/resume": "eski bir oturuma dön",
     "/rename": "bu oturuma ad ver",
+    "/doktor": "sağlık kontrolü (Ollama, modeller, claude, DB)",
+    "/fork": "bu konuşmayı çatalla (kopyada devam et, orijinal arşivde kalır)",
     "/cikis": "Kuzgun'dan çık",
 }
 

@@ -57,3 +57,22 @@ def test_request_without_token_has_no_auth_header():
 
     req = _build_request("http://x/chat", {"message": "m"})
     assert req.get_header("Authorization") is None
+
+
+def test_inbox_send_uses_post():
+    from kuzgun.client import inbox_send
+
+    seen = {}
+    def fake(url, payload):
+        seen["url"] = url; seen["p"] = payload
+        return {"accepted": True}
+    assert inbox_send("http://x", "b", "a", "selam", _post=fake) is True
+    assert seen["url"].endswith("/inbox/send")
+    assert seen["p"] == {"to": "b", "from": "a", "text": "selam"}
+
+
+def test_inbox_poll_returns_messages():
+    from kuzgun.client import inbox_poll
+
+    out = inbox_poll("http://x", "b", _post=lambda u, p: {"messages": [{"from": "a", "text": "x"}]})
+    assert out == [{"from": "a", "text": "x"}]

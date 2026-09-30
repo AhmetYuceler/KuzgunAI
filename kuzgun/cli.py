@@ -245,6 +245,22 @@ def main(argv=None) -> None:
         if user == "/gecmis":
             console.print(Panel(format_history(engine.messages), title="Geçmiş", border_style="dim"))
             return
+        if user == "/doktor":
+            from kuzgun.doctor import format_report, run_checks
+
+            state["busy"] = "sağlık kontrolü…"
+            rapor = run_guarded(lambda: format_report(run_checks(engine.config)))
+            console.print(Panel(rapor, title="Sağlık Kontrolü", border_style="dim"))
+            return
+        if user == "/fork":
+            # Konuşmayı çatalla: mevcut hâli arşive yaz, kopyasını yeni oturuma al,
+            # aktif oturumu yeni kopyaya çevir (orijinal arşivde kalır).
+            _save()
+            yeni = archive.new_id()
+            archive.save(yeni, engine.messages, mode=state["mode"], cwd=os.getcwd())
+            state["session_id"] = yeni
+            ui.print_note(console, "Konuşma çatallandı; kopyada devam ediyorsun (orijinal arşivde).")
+            return
         if user in ("/init", "/analiz") or (not user.startswith("/") and is_init_intent(user)):
             root = os.getcwd()
             console.print(f"  [dim]proje taranıyor: {root}[/]")

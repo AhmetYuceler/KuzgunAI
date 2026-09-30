@@ -39,6 +39,28 @@ def remote_chat(
     return result.get("reply", "")
 
 
+def inbox_send(base: str, to: str, sender: str, text: str, token: str = "", _post=None) -> bool:
+    """Başka bir oturumun mesaj kutusuna mesaj gönderir (C11). Kabul edilirse True."""
+    url = base.rstrip("/") + "/inbox/send"
+    payload = {"to": to, "from": sender, "text": text}
+    try:
+        result = _post(url, payload) if _post else _http_post(url, payload, token)
+    except Exception:
+        return False
+    return bool(result.get("accepted"))
+
+
+def inbox_poll(base: str, session: str, token: str = "", _post=None) -> list:
+    """Kendi kutusundaki bekleyen mesajları çeker (C11)."""
+    url = base.rstrip("/") + "/inbox/poll"
+    payload = {"session": session}
+    try:
+        result = _post(url, payload) if _post else _http_post(url, payload, token)
+    except Exception:
+        return []
+    return result.get("messages", [])
+
+
 def run_remote_repl(base: str, cfg, input_fn=input, out=print) -> None:
     """HTTP ince istemci REPL'i. Komutlar (mod/yardım/çıkış) ORTAK repl.handle_slash
     ile işlenir (yerel CLI ile aynı komut tablosu — B8); mesajlar remote_chat ile
@@ -56,6 +78,19 @@ def run_remote_repl(base: str, cfg, input_fn=input, out=print) -> None:
         except (EOFError, KeyboardInterrupt):
             break
         if not user:
+            continue
+        # C11: oturumlar-arası mesajlaşma (HTTP istemcide).
+        if user.startswith("/mesaj "):
+            rest = user[len("/mesaj ") :].strip().split(None, 1)
+            if len(rest) < 2:
+                out("Kullanım: /mesaj <oturum> <metin>")
+            else:
+                ok = inbox_send(base, rest[0], session, rest[1], token=cfg.token)
+                out("Gönderildi." if ok else "Gönderilemedi (hız sınırı/kopya?).")
+            continue
+        if user == "/gelen":
+            msgs = inbox_poll(base, session, token=cfg.token)
+            out("\n".join(f"[{m['from']}] {m['text']}" for m in msgs) if msgs else "Yeni mesaj yok.")
             continue
         if user.startswith("/"):
             out(handle_slash(user, state))
