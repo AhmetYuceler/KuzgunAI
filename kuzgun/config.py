@@ -46,7 +46,7 @@ class Config:
     claude_timeout: int = 300  # /claude ve devretme için 'claude --print' süresi
     # B2 yeni alanlar (aşağı akış: B3 arka uç, B4/B6 döngü/bağlam bütçesi):
     temperature: float = 0.2  # model üretim sıcaklığı
-    max_steps: int = 10  # ajan döngüsünde azami adım
+    max_steps: int = 20  # ajan döngüsünde azami adım (gerçek proje işi: ara+oku+düzenle+doğrula)
     max_history: int = 24  # bağlamda tutulan azami mesaj (sistem + son turlar)
     # Araç çıktısı modele verilmeden önce bu kadar karaktere kırpılır (üstü out_dir'e
     # taşar). Büyük bağlamlı modeller (ör. 80B) için yüksek; küçük 7B için düşürülebilir.
