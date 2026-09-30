@@ -52,6 +52,9 @@ class Config:
     # C5: izin kuralları (satır/';' ayrık): "allow run_command(cmd:git *)" gibi.
     permission_rules: str = ""
     compaction: bool = False  # C6: bağlam dolunca eski turları özetle (yoksa kırp)
+    # Güvenlik: aktif tarama (security_scan) yalnız bu domain(ler)de (virgülle). Boş
+    # = aktif tarama reddedilir (yetkisiz/kandırılmış hedefi engeller).
+    scan_allowlist: str = ""
 
 
 def _float_env(name: str, default: float) -> float:
@@ -120,4 +123,5 @@ def load_config() -> Config:
         out_dir=_resolve(os.environ.get("KUZGUN_OUT_DIR", d.out_dir), home),
         permission_rules=os.environ.get("KUZGUN_PERMISSION_RULES", d.permission_rules),
         compaction=os.environ.get("KUZGUN_COMPACTION", "0") not in ("0", "false", "False"),
+        scan_allowlist=os.environ.get("KUZGUN_SCAN_ALLOWLIST", d.scan_allowlist),
     )

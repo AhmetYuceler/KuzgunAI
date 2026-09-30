@@ -58,13 +58,24 @@ def _find_nuclei() -> str | None:
 def _default_run(cmd: list, timeout: int):
     import subprocess
 
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, encoding="utf-8")
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout,
+        encoding="utf-8", errors="replace",
+    )
     return proc.returncode, proc.stdout or "", proc.stderr or ""
 
 
-def security_scan(target: str, severity: str = "", _run=None, _which=None) -> str:
+def security_scan(target: str, severity: str = "", _run=None, _which=None,
+                  _allowlist: str = "", _scope=None) -> str:
     if not target or not target.strip():
         return "Error: hedef (target) gerekli."
+    # Yetki + SSRF: aktif tarama yalnız allowlist'teki (yetkili) hedeflerde.
+    from kuzgun.tools._scope import check_scope
+
+    scope = _scope or (lambda t: check_scope(t, _allowlist, require_allowlist=True))
+    ok, reason = scope(target.strip())
+    if not ok:
+        return f"Error: {reason}"
     find = _which or (lambda n: _find_nuclei())
     nuclei = find("nuclei")
     if not nuclei:

@@ -82,8 +82,16 @@ def build_default_registry(config: Config | None = None) -> ToolRegistry:
     )
     reg.register(MEDIA_SCHEMA, media_control)  # zararsız medya/müzik kontrolü
     reg.register(WEATHER_SCHEMA, weather)  # hava durumu (konumdan)
-    reg.register(WEB_RECON_SCHEMA, web_recon)  # yetkili güvenlik keşfi (GET, okuyan)
-    reg.register(SECURITY_SCAN_SCHEMA, security_scan, mutating=True)  # aktif zafiyet taraması
+    # Güvenlik araçları: hedef kapsamı (SSRF + allowlist) config'ten partial ile bağlı.
+    reg.register(
+        WEB_RECON_SCHEMA,
+        functools.partial(web_recon, _allowlist=cfg.scan_allowlist),
+    )  # yetkili güvenlik keşfi (GET, okuyan)
+    reg.register(
+        SECURITY_SCAN_SCHEMA,
+        functools.partial(security_scan, _allowlist=cfg.scan_allowlist),
+        mutating=True,
+    )  # aktif zafiyet taraması (yetkili hedef gerektirir)
     reg.register(WRITE_FILE_SCHEMA, write_file, mutating=True)
     reg.register(RUN_COMMAND_SCHEMA, run_command, mutating=True)
     return reg

@@ -104,9 +104,16 @@ def _default_tls(host: str) -> str:
         return f"(TLS bilgisi alınamadı: {exc})"
 
 
-def web_recon(url: str, _fetch=None, _tls=None) -> str:
+def web_recon(url: str, _fetch=None, _tls=None, _allowlist: str = "", _scope=None) -> str:
     fetch = _fetch or _default_fetch
     testing = _fetch is not None  # enjekte fetch → test/kontrollü: gerçek TLS'e gitme
+    # SSRF koruması: iç/özel ağ adreslerini engelle (allowlist opsiyonel — keşif hafif).
+    from kuzgun.tools._scope import check_scope
+
+    scope = _scope or (lambda t: check_scope(t, _allowlist, require_allowlist=False))
+    ok, reason = scope(url)
+    if not ok:
+        return f"Error: {reason}"
     try:
         from urllib.parse import urlparse
 

@@ -34,7 +34,7 @@ def test_web_recon_reports_headers_and_tech():
                    "set-cookie": "laravel_session=z", "content-type": "text/html"}
         return status, headers, "<html><meta name=generator content='Laravel'></html>"
 
-    out = web_recon("https://ahmetyuceler.com.tr", _fetch=fake_fetch)
+    out = web_recon("https://ahmetyuceler.com.tr", _fetch=fake_fetch, _scope=lambda t: (True, None))
     assert "nginx" in out
     assert "PHP" in out
     assert "Laravel" in out
@@ -45,7 +45,7 @@ def test_web_recon_flags_missing_security_headers():
     def fake_fetch(url):
         return 200, {"server": "nginx"}, "<html></html>"  # güvenlik başlıkları yok
 
-    out = web_recon("https://x.example", _fetch=fake_fetch)
+    out = web_recon("https://x.example", _fetch=fake_fetch, _scope=lambda t: (True, None))
     # CSP/HSTS gibi eksik başlıklar rapora 'eksik' olarak girmeli
     assert "eksik" in out.lower() or "yok" in out.lower()
 
@@ -54,4 +54,10 @@ def test_web_recon_error_caught():
     def boom(url):
         raise RuntimeError("bağlantı yok")
 
-    assert web_recon("https://x", _fetch=boom).startswith("Error:")
+    assert web_recon("https://x", _fetch=boom, _scope=lambda t: (True, None)).startswith("Error:")
+
+
+def test_web_recon_blocks_internal_ssrf():
+    # SSRF: iç ağ adresi engellenmeli (bypass yok, gerçek check_scope).
+    out = web_recon("http://192.168.1.1", _fetch=lambda u: (200, {}, ""))
+    assert out.startswith("Error:") and "SSRF" in out
