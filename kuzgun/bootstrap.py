@@ -24,7 +24,9 @@ from kuzgun.tools.media_control import MEDIA_SCHEMA, media_control
 from kuzgun.tools.read_file import READ_FILE_SCHEMA, read_file
 from kuzgun.tools.remember import REMEMBER_SCHEMA, remember
 from kuzgun.tools.run_command import RUN_COMMAND_SCHEMA, run_command
+from kuzgun.tools.security_scan import SECURITY_SCAN_SCHEMA, security_scan
 from kuzgun.tools.weather import WEATHER_SCHEMA, weather
+from kuzgun.tools.web_recon import WEB_RECON_SCHEMA, web_recon
 from kuzgun.tools.web_search import WEB_SEARCH_SCHEMA, web_search
 from kuzgun.tools.write_file import WRITE_FILE_SCHEMA, write_file
 
@@ -80,6 +82,8 @@ def build_default_registry(config: Config | None = None) -> ToolRegistry:
     )
     reg.register(MEDIA_SCHEMA, media_control)  # zararsız medya/müzik kontrolü
     reg.register(WEATHER_SCHEMA, weather)  # hava durumu (konumdan)
+    reg.register(WEB_RECON_SCHEMA, web_recon)  # yetkili güvenlik keşfi (GET, okuyan)
+    reg.register(SECURITY_SCAN_SCHEMA, security_scan, mutating=True)  # aktif zafiyet taraması
     reg.register(WRITE_FILE_SCHEMA, write_file, mutating=True)
     reg.register(RUN_COMMAND_SCHEMA, run_command, mutating=True)
     return reg
