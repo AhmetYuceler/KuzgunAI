@@ -1,106 +1,32 @@
 from __future__ import annotations
 
-import difflib
 import os
 
 from kuzgun import __version__
 from kuzgun.analyze import is_init_intent
 from kuzgun.engine import (  # build_default_registry/inject_memory: testlerce içe aktarılır
-    KuzgunEngine,
     SYSTEM_PROMPT,
+    KuzgunEngine,
     build_default_registry,
     inject_memory,
 )
 from kuzgun.permissions import MODES
+
+# B8: komut tablosu + taşıma-bağımsız komut işleme ortak repl.py'de (yerel + HTTP paylaşır).
+# Testlerce `kuzgun.cli`'den içe aktarıldıkları için burada re-export edilir.
+from kuzgun.repl import (
+    _NEEDS_ARG,
+    COMMAND_HELP,
+    COMMANDS,
+    format_history,
+    handle_slash,
+)
 from kuzgun.teacher import ask_claude
 
-
-_EDIT_KEYS_HELP = (
-    "Kısayollar: Ctrl+Backspace/Ctrl+Delete kelime sil · Ctrl+←/→ kelime atla · "
-    "Home/End · Ctrl+U/Ctrl+K satırı sil · ↑/↓ önceki girdiler · shift+tab mod · alt+v resim"
-)
-
-# Argümansız yazılırsa kullanım gösterilen komutlar (argümanlısı main() içinde işlenir).
-_NEEDS_ARG = {
-    "/hatirla": "<şey>",
-    "/ajanlar": "<görev>",
-    "/claude": "<soru>",
-    "/rename": "<ad>",
-}
-COMMANDS = (
-    "/yardim", "/init", "/mod", "/plan", "/normal", "/otonom", "/claude", "/ajanlar",
-    "/hatirla", "/notlar", "/gecmis", "/resume", "/rename", "/cikis",
-)
-# '/' menüsünde komutun yanında soluk görünen açıklamalar (Claude Code'daki gibi).
-COMMAND_HELP = {
-    "/yardim": "komutları listele",
-    "/init": "projeyi analiz et, KUZGUN.md oluştur (her oturumda yüklenir)",
-    "/mod": "mod değiştir: plan | normal | otonom",
-    "/plan": "plan moduna geç (değişiklik yapmaz); görev de verilebilir",
-    "/normal": "normal moda geç (değişiklikte onay sorar)",
-    "/otonom": "otonom moda geç (onaysız çalışır)",
-    "/claude": "uzmana (Claude) danış",
-    "/ajanlar": "görevi böl, alt-ajanlarla tek tek yap",
-    "/hatirla": "kalıcı not al (KUZGUN.md)",
-    "/notlar": "kalıcı notları göster",
-    "/gecmis": "bu oturumun son konuşmasını göster",
-    "/resume": "eski bir oturuma dön",
-    "/rename": "bu oturuma ad ver",
-    "/cikis": "Kuzgun'dan çık",
-}
-
-
-def handle_slash(line: str, state: dict) -> str | None:
-    """Slash komutunu işler. Slash değilse None döner."""
-    if not line.startswith("/"):
-        return None
-    parts = line.split()
-    cmd = parts[0]
-    if cmd in ("/cikis", "/exit", "/quit"):
-        state["quit"] = True
-        return "Görüşürüz!"
-    if cmd == "/yardim":
-        return (
-            "Komutlar: /init (projeyi analiz et → KUZGUN.md), "
-            "/mod <plan|normal|otonom> (ya da kısaca /plan, /normal, /otonom; "
-            "shift+tab de döndürür), /claude <soru> (uzmana danış), "
-            "/ajanlar <görev> (çok adımlı işi böl-yap), /hatirla <şey>, /notlar, "
-            "/gecmis, /resume [ad|no] (eski oturuma dön), /rename <ad> (oturuma ad ver), "
-            "/yardim, /cikis\n" + _EDIT_KEYS_HELP
-        )
-    if cmd == "/mod":
-        if len(parts) < 2:
-            return f"Şu anki mod: {state['mode']}. Kullanım: /mod {'|'.join(MODES)}"
-        yeni = parts[1]
-        if yeni not in MODES:
-            return f"Geçersiz mod: {yeni}. Seçenekler: {', '.join(MODES)}"
-        state["mode"] = yeni
-        return f"Mod değişti: {yeni}"
-    if cmd[1:] in MODES:  # /plan <görev> → moda geç, görev varsa hemen işle
-        state["mode"] = cmd[1:]
-        gorev = line[len(cmd) :].strip()
-        if gorev:
-            state["pending"] = gorev
-        return f"Mod değişti: {state['mode']}"
-    if cmd in _NEEDS_ARG and len(parts) < 2:
-        return f"Kullanım: {cmd} {_NEEDS_ARG[cmd]}"
-    yakin = difflib.get_close_matches(cmd, COMMANDS, n=1, cutoff=0.6)
-    ipucu = f" Şunu mu demek istedin: {yakin[0]}?" if yakin else ""
-    return f"Bilinmeyen komut: {cmd}.{ipucu} /yardim yaz."
-
-
-def format_history(messages: list[dict], n: int = 8) -> str:
-    """Son n kullanıcı/asistan turunu okunabilir metne çevirir (sistem hariç)."""
-    turns = [m for m in messages if m.get("role") in ("user", "assistant")]
-    recent = turns[-n:]
-    if not recent:
-        return "Geçmiş boş."
-    lines = []
-    for m in recent:
-        who = "sen" if m["role"] == "user" else "kuzgun"
-        content = (m.get("content", "") or "").strip().replace("\n", " ")
-        lines.append(f"[{who}] {content[:200]}")
-    return "\n".join(lines)
+__all__ = [
+    "main", "handle_slash", "format_history", "COMMANDS", "COMMAND_HELP",
+    "build_default_registry", "inject_memory", "SYSTEM_PROMPT",
+]
 
 
 def format_session_list(metas: list[dict]) -> str:
@@ -247,17 +173,14 @@ def _parse_args(argv=None):
 
 
 def main(argv=None) -> None:
+    import atexit
+
     from rich.console import Console
     from rich.panel import Panel
 
-    from kuzgun import ui
-
-    import atexit
-
-    from kuzgun import vision
-    from kuzgun.archive import SessionArchive
-
+    from kuzgun import ui, vision
     from kuzgun.analyze import load_project_notes
+    from kuzgun.archive import SessionArchive
 
     args = _parse_args(argv)
     console = Console()

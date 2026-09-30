@@ -39,40 +39,43 @@ def remote_chat(
     return result.get("reply", "")
 
 
+def run_remote_repl(base: str, cfg, input_fn=input, out=print) -> None:
+    """HTTP ince istemci REPL'i. Komutlar (mod/yardım/çıkış) ORTAK repl.handle_slash
+    ile işlenir (yerel CLI ile aynı komut tablosu — B8); mesajlar remote_chat ile
+    uzak motora gider. Not: 'otonom' sunucuda plan/normal'e sıkıştırılır (güvenlik)."""
+    import uuid
+
+    from kuzgun.repl import handle_slash
+
+    session = "istemci-" + uuid.uuid4().hex[:8]  # her istemci kendi konuşması
+    state = {"mode": "normal", "quit": False}
+    out(f"Kuzgun istemcisi -> {base}  (mod: {state['mode']}; /yardim, /cikis)")
+    while True:
+        try:
+            user = input_fn(f"\n[{state['mode']}] sen> ").replace("﻿", "").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if not user:
+            continue
+        if user.startswith("/"):
+            out(handle_slash(user, state))
+            if state.get("quit"):
+                break
+            continue
+        out(
+            "\nkuzgun> "
+            + remote_chat(user, base_url=base, mode=state["mode"], token=cfg.token, session=session)
+        )
+
+
 def main() -> None:  # kuzgun-client giriş noktası: ince terminal istemcisi
     import sys
-    import uuid
 
     from kuzgun.config import load_config
 
     cfg = load_config()
     base = sys.argv[1] if len(sys.argv) > 1 else cfg.engine_url
-    session = "istemci-" + uuid.uuid4().hex[:8]  # her istemci kendi konuşması
-    mode = "normal"
-    # Not: HTTP üzerinden yalnız plan/normal geçerli; 'otonom' (onaysız mutasyon)
-    # güvenlik nedeniyle sunucuda yasak, yerel `kuzgun` CLI'da yapılır.
-    print(f"Kuzgun istemcisi -> {base}  (mod: {mode}; /mod <plan|normal>, /cikis)")
-    while True:
-        try:
-            user = input(f"\n[{mode}] sen> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            break
-        if user in ("/cikis", "/exit"):
-            break
-        if not user:
-            continue
-        if user.startswith("/mod"):
-            parts = user.split()
-            if len(parts) > 1 and parts[1] in ("plan", "normal"):
-                mode = parts[1]
-                print(f"Mod değişti: {mode}")
-            else:
-                print("Kullanım: /mod <plan|normal>  (otonom yalnız yerel CLI'da)")
-            continue
-        print(
-            "\nkuzgun>",
-            remote_chat(user, base_url=base, mode=mode, token=cfg.token, session=session),
-        )
+    run_remote_repl(base, cfg)
 
 
 if __name__ == "__main__":
