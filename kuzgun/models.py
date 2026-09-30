@@ -1,8 +1,21 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
+
+_THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def _strip_thinking(text: str | None) -> str | None:
+    """'Düşünen' modellerin (Qwen3 vb.) yanıttaki <think>...</think> iç-akıl blokunu
+    temizler (güvenlik ağı; /no_think çalışmazsa bile cevap/araç ayrıştırması temiz
+    kalsın). Yanıt tamamen think ise orijinali korur (boş dönmez)."""
+    if not text:
+        return text
+    stripped = _THINK_RE.sub("", text).strip()
+    return stripped if stripped else text
 
 
 @dataclass
@@ -106,7 +119,7 @@ class OpenAICompatBackend:
                     arguments=_parse_arguments(tc.function.arguments),
                 )
             )
-        return AssistantMessage(text=m.content, tool_calls=tool_calls)
+        return AssistantMessage(text=_strip_thinking(m.content), tool_calls=tool_calls)
 
 
 # Eski ad, geriye dönük uyum için takma ad olarak korunur.

@@ -47,3 +47,19 @@ def test_ollama_client_has_request_timeout():
 
     assert OllamaClient(timeout=7).client_timeout == 7
     assert OllamaClient().client_timeout > 0  # varsayılan: sonsuz bekleme yok
+
+
+def test_strip_thinking_removes_think_block():
+    from kuzgun.models import _strip_thinking
+
+    assert _strip_thinking("<think>uzun akıl yürütme</think>\n\nMerhaba") == "Merhaba"
+    assert _strip_thinking("Sadece cevap") == "Sadece cevap"   # think yoksa aynen
+    assert _strip_thinking("<think>a</think><think>b</think>Son") == "Son"
+
+
+def test_strip_thinking_keeps_original_if_only_thinking():
+    from kuzgun.models import _strip_thinking
+
+    # Yanıt tamamen think ise (nadiren), boş dönmek yerine orijinali koru.
+    out = _strip_thinking("<think>sadece düşündüm</think>")
+    assert out  # boş değil
