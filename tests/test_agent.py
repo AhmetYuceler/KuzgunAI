@@ -356,6 +356,9 @@ def test_on_step_reports_tool_activity():
         AssistantMessage(text="bitti", tool_calls=[]),
     ])
     steps = []
-    run_turn(client, [{"role": "user", "content": "?"}], reg, on_step=steps.append)
+    run_turn(
+        client, [{"role": "user", "content": "?"}], reg,
+        on_step=lambda m, kind=None: steps.append(m),
+    )
     assert any("düşün" in s.lower() for s in steps)      # model düşünüyor
     assert any("echo" in s.lower() or "çalıştır" in s.lower() for s in steps)  # araç

@@ -34,6 +34,67 @@ def _tool_label(name: str) -> str:
     return _TOOL_LABELS.get(name, f"⚙️ {name} çalıştırıyor") + "…"
 
 
+# Araç → çağrıdaki "önemli" argümanın adı. Kalıcı aktivite satırında bu değer
+# gösterilir (ör. run_command · git status, read_file · kuzgun/cli.py). Claude
+# Code'un tool-call kartlarındaki gibi "neyle çalıştırdığını" kullanıcı görür.
+_ARG_KEYS = {
+    "web_search": "query",
+    "grep_search": "pattern",
+    "glob_search": "pattern",
+    "read_file": "path",
+    "write_file": "path",
+    "run_command": "command",
+    "fetch_url": "url",
+    "web_recon": "url",
+    "security_scan": "target",
+    "weather": "city",
+    "media_control": "action",
+    "ask_expert": "question",
+    "remember": "text",
+}
+
+
+def _arg_summary(name: str, arguments: dict, limit: int = 60) -> str:
+    """Aktivite satırında gösterilecek kısa argüman özeti. Adlandırılmış anahtar
+    (yol/komut/sorgu…) öncelikli; yoksa ilk basit değer; hiçbiri yoksa boş.
+    Satır sonları boşluğa çevrilir, limit karakterde kesilir (tek satır kalsın)."""
+    key = _ARG_KEYS.get(name)
+    val = arguments.get(key) if key and key in arguments else None
+    if val is None:
+        for v in arguments.values():
+            if isinstance(v, (str, int, float, bool)):
+                val = v
+                break
+    if val is None:
+        return ""
+    s = " ".join(str(val).split())
+    return s[:limit] + ("…" if len(s) > limit else "")
+
+
+def _tool_activity(name: str, arguments: dict) -> str:
+    """Kalıcı 'ne yapıyor' satırının metni: emoji etiketi + kısa argüman."""
+    base = _TOOL_LABELS.get(name, f"⚙️ {name} çalıştırıyor")
+    arg = _arg_summary(name, arguments)
+    return f"{base} · {arg}" if arg else base
+
+
+def _oneline(text, limit: int = 80) -> str:
+    """Metnin ilk boş olmayan satırını kırparak döndürür (sonuç özetleri için)."""
+    first = next((ln for ln in str(text).splitlines() if ln.strip()), "").strip()
+    return first[:limit] + ("…" if len(first) > limit else "")
+
+
+def _result_summary(result) -> str:
+    """Araç sonucunun tek satırlık özeti: ✓/✗ + ilk satır (+ satır sayısı)."""
+    text = str(result)
+    ok = getattr(result, "ok", True)
+    body = _oneline(text)
+    n = len([ln for ln in text.splitlines() if ln.strip()])
+    if n > 1:
+        body = f"{body}  ({n} satır)"
+    return f"{'✓' if ok else '✗'} {body}".rstrip()
+
+
 # B6: araç çıktısı bağlamı doldurmasın; bundan uzunsa kırpılıp geçmişe öyle girer.
 MAX_TOOL_CHARS = 4000
 
@@ -204,7 +265,7 @@ def run_turn(
     turu istenir (C2: bütçe bitince zarif kapanış, yarım kalma yerine kısmi cevap)."""
     def _escalate_and_record() -> str:
         # A3 (bug #5): devredilen cevabı geçmişe de yaz ki sonraki turda kaybolmasın.
-        (on_step or (lambda m: None))("🧠 uzmana (Claude) danışıyor…")
+        (on_step or (lambda *a, **k: None))("🧠 uzmana (Claude) danışıyor…", kind="tool")
         reply = escalate(_last_user_text(messages))
         messages.append({"role": "assistant", "content": reply})
         return reply
@@ -224,7 +285,7 @@ def run_turn(
         log.info("bütçe doldu → zarif kapanış id=%s", turn_id)
         return text
 
-    step_cb = on_step or (lambda m: None)
+    step_cb = on_step or (lambda *a, **k: None)
     turn_id = uuid.uuid4().hex[:8]
     log.info("tur başladı id=%s mode=%s", turn_id, mode)
     last_sig = None
@@ -253,15 +314,18 @@ def run_turn(
         last_sig = sig
         step_error = False
         for tc in assistant.tool_calls:
-            step_cb(_tool_label(tc.name))  # kullanıcıya canlı "ne yapıyor" göster
+            # Kalıcı "ne yapıyor" satırı (soru altına yazılır): araç + argüman.
+            step_cb(_tool_activity(tc.name, tc.arguments), kind="tool")
             mutating = registry.is_mutating(tc.name)
             allowed, reason = is_allowed(tc.name, tc.arguments, mutating, mode, confirm, rules=rules)
             if allowed:
                 with timed(log, "araç", id=turn_id, name=tc.name):
                     result = registry.execute(tc.name, tc.arguments)
+                step_cb(_result_summary(result), kind="result")  # ✓/✗ sonuç özeti
             else:
                 # İzin reddi HATA değil (model başarısızlığı sayılmaz → devretme tetiklemez).
                 result = ToolResult(reason, ok=True)
+                step_cb("⛔ " + _oneline(reason), kind="result")
                 log.info("araç engellendi id=%s name=%s mode=%s", turn_id, tc.name, mode)
             if not result.ok:
                 step_error = True

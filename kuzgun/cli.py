@@ -232,12 +232,30 @@ def main(argv=None) -> None:
             key = son["id"] if son else "yok"
         ui.print_note(console, resume_session(engine, archive, key, state))
 
+    def _on_step(msg: str, kind: str | None = None) -> None:
+        """Canlı 'ne yapıyor' bildirimi. kind:
+        - None    → yalnız alt durum barı (geçici: düşünüyor/adım N…)
+        - 'tool'  → sorunun altına KALICI satır: '● <araç> · <arg>' (+ barı da güncelle)
+        - 'result'→ onun altına '  ⎿ <özet>' (barı değiştirmez; eylem yazılı kalsın)
+        Claude Code terminalindeki tool-call kartları gibi."""
+        from rich.text import Text
+
+        if kind != "result":
+            state["busy"] = msg
+        # no_wrap+crop: adım satırları hep tek satır kalsın (uzun çıktı sarmasın).
+        if kind == "tool":
+            console.print(Text("  ● ", style="green") + Text(msg, style="grey62"),
+                          no_wrap=True, crop=True)
+        elif kind == "result":
+            console.print(Text("    ⎿ " + msg, style="grey50"), no_wrap=True, crop=True)
+
     def _sor(user: str, images: list[str], cancel) -> None:
         """Bir kullanıcı mesajını modele iletir; iptal edilmediyse cevabı basar.
-        on_step ile alt durum barı canlı 'ne yapıyor' gösterir (Claude Code gibi)."""
+        on_step ile hem alt durum barı hem sorunun altına kalıcı adım satırları
+        yazılır (Claude Code gibi: ne araştırdığı, hangi komutu çalıştırdığı görünür)."""
         cevap = run_guarded(
             engine.chat, user, mode=state["mode"], images=images or None,
-            on_step=lambda m: state.__setitem__("busy", m),
+            on_step=_on_step,
         )
         if cancel.is_set():
             return

@@ -411,7 +411,7 @@ class KuzgunEngine:
             return result
 
     def _run_chat(self, messages, message, mode, confirm, images=None, on_step=None) -> str:
-        step = on_step or (lambda m: None)
+        step = on_step or (lambda *a, **k: None)
         if images:
             step("🖼️ resim betimleniyor…")
             cb = confirm if confirm is not None else self.confirm
