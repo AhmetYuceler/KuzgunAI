@@ -65,6 +65,12 @@ def test_result_summary_counts_lines():
     assert "satır" in out
 
 
+def test_result_summary_appends_duration():
+    assert "sn" in _result_summary(ToolResult("ok", ok=True), seconds=2.34)
+    # çok kısa süre gösterilmez (gürültü olmasın)
+    assert "sn" not in _result_summary(ToolResult("ok", ok=True), seconds=0.01)
+
+
 def test_oneline_takes_first_nonblank():
     assert _oneline("\n\n  merhaba \ndünya") == "merhaba"
 

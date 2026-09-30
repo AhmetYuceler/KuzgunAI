@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import uuid
 
 from kuzgun.logging_setup import get_logger, timed
@@ -84,14 +85,16 @@ def _oneline(text, limit: int = 80) -> str:
     return first[:limit] + ("…" if len(first) > limit else "")
 
 
-def _result_summary(result) -> str:
-    """Araç sonucunun tek satırlık özeti: ✓/✗ + ilk satır (+ satır sayısı)."""
+def _result_summary(result, seconds: float | None = None) -> str:
+    """Araç sonucunun tek satırlık özeti: ✓/✗ + ilk satır (+ satır sayısı [+ süre])."""
     text = str(result)
     ok = getattr(result, "ok", True)
     body = _oneline(text)
     n = len([ln for ln in text.splitlines() if ln.strip()])
     if n > 1:
         body = f"{body}  ({n} satır)"
+    if seconds is not None and seconds >= 0.05:
+        body = f"{body}  {seconds:.1f}sn"
     return f"{'✓' if ok else '✗'} {body}".rstrip()
 
 
@@ -319,9 +322,11 @@ def run_turn(
             mutating = registry.is_mutating(tc.name)
             allowed, reason = is_allowed(tc.name, tc.arguments, mutating, mode, confirm, rules=rules)
             if allowed:
+                t0 = time.perf_counter()
                 with timed(log, "araç", id=turn_id, name=tc.name):
                     result = registry.execute(tc.name, tc.arguments)
-                step_cb(_result_summary(result), kind="result")  # ✓/✗ sonuç özeti
+                # ✓/✗ sonuç özeti + geçen süre (Claude Code'daki gibi).
+                step_cb(_result_summary(result, time.perf_counter() - t0), kind="result")
             else:
                 # İzin reddi HATA değil (model başarısızlığı sayılmaz → devretme tetiklemez).
                 result = ToolResult(reason, ok=True)
