@@ -17,6 +17,7 @@ from kuzgun.memory import Memory
 from kuzgun.models import FallbackClient, OpenAICompatBackend
 from kuzgun.tools import ToolRegistry
 from kuzgun.tools.ask_expert import ASK_EXPERT_SCHEMA, ask_expert
+from kuzgun.tools.edit_file import EDIT_FILE_SCHEMA, edit_file
 from kuzgun.tools.fetch_url import FETCH_URL_SCHEMA, fetch_url
 from kuzgun.tools.glob_search import GLOB_SCHEMA, glob_search
 from kuzgun.tools.grep_search import GREP_SCHEMA, grep_search
@@ -98,6 +99,7 @@ def build_default_registry(config: Config | None = None) -> ToolRegistry:
         mutating=True,
     )  # aktif zafiyet taraması (yetkili hedef gerektirir)
     reg.register(WRITE_FILE_SCHEMA, write_file, mutating=True)
+    reg.register(EDIT_FILE_SCHEMA, edit_file, mutating=True)  # hedefli düzenleme
     reg.register(RUN_COMMAND_SCHEMA, run_command, mutating=True)
     return reg
 
