@@ -56,7 +56,12 @@ def make_general_client(config: Config):
 
 
 def make_embedder(config: Config) -> OllamaEmbedder:
-    return OllamaEmbedder(model=config.embed_model, base_url=config.ollama_url)
+    # Embedding ayrı adres/anahtarda olabilir (uzak chat + yerel embed); boşsa ana url/key.
+    return OllamaEmbedder(
+        model=config.embed_model,
+        base_url=config.embed_url or config.ollama_url,
+        api_key=config.embed_api_key or config.api_key,
+    )
 
 
 def make_memory(config: Config) -> Memory:

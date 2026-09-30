@@ -20,6 +20,10 @@ class Config:
     embed_model: str = "nomic-embed-text"
     ollama_url: str = "http://localhost:11434/v1"
     api_key: str = "ollama"  # OpenAI-uyumlu arka uç anahtarı (Ollama'da sahte)
+    # Embedding ayrı bir adreste/anahtarda olabilir (ör. büyük model uzak sunucuda,
+    # küçük embedding yerelde ve bedava). Boşsa ollama_url/api_key kullanılır.
+    embed_url: str = ""
+    embed_api_key: str = ""
     db_path: str = "data/memory.db"
     notes_path: str = "data/KUZGUN.md"  # kalıcı notlar (Claude'un CLAUDE.md'si gibi)
     engine_url: str = "http://127.0.0.1:8000"
@@ -98,6 +102,8 @@ def load_config() -> Config:
         embed_model=os.environ.get("KUZGUN_EMBED_MODEL", d.embed_model),
         ollama_url=os.environ.get("KUZGUN_OLLAMA_URL", d.ollama_url),
         api_key=os.environ.get("KUZGUN_API_KEY", d.api_key),
+        embed_url=os.environ.get("KUZGUN_EMBED_URL", d.embed_url),
+        embed_api_key=os.environ.get("KUZGUN_EMBED_API_KEY", d.embed_api_key),
         db_path=_resolve(os.environ.get("KUZGUN_DB", d.db_path), home),
         notes_path=_resolve(os.environ.get("KUZGUN_NOTES", d.notes_path), home),
         engine_url=os.environ.get("KUZGUN_ENGINE_URL", d.engine_url),

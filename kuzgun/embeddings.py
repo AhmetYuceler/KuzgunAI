@@ -42,13 +42,15 @@ class OllamaEmbedder:
         model: str = "nomic-embed-text",
         base_url: str = "http://localhost:11434/v1",
         timeout: float = 30,
+        api_key: str = "ollama",
     ):
         from openai import OpenAI
 
         # Kısa zaman aşımı: hafıza yalnız yardımcı bağlamdır; embedding takılırsa
         # (ekran görüntüsündeki Ctrl+C durumu) sohbet engellenmesin.
+        # api_key: uzak (token korumalı) bir Ollama/vLLM'e bağlanırken bearer için.
         self.client_timeout = timeout
-        self._client = OpenAI(base_url=base_url, api_key="ollama", timeout=timeout, max_retries=1)
+        self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout, max_retries=1)
         self._model = model
 
     def embed(self, text: str) -> list[float]:
