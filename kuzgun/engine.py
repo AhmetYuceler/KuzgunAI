@@ -4,7 +4,7 @@ import os
 import re
 import threading
 
-from kuzgun.agent import run_turn
+from kuzgun.agent import CANCELLED, run_turn
 from kuzgun.bootstrap import (  # B3: kurulum bootstrap'te; build_default_registry re-export
     build_default_registry,
     build_registry_with_mcp,
@@ -371,25 +371,27 @@ class KuzgunEngine:
         images: list[str] | None = None,
         reminder: str | None = None,
         on_step=None,
+        cancel=None,
     ) -> str:
         # A4 (bug #10): tur boyunca oturum kilidini tut → aynı oturuma eşzamanlı
         # istekler geçmişi bozmaz. Ayrıca oturumu pinle ki başka bir oturumun
         # eviction'ı bu turu ortada atıp kilidini yok etmesin (reviewer #1).
         if session_id is None:
             return self._locked_turn(
-                self._default_lock, None, message, mode, confirm, images, reminder, on_step
+                self._default_lock, None, message, mode, confirm, images, reminder, on_step, cancel
             )
         self._store.pin(session_id)
         try:
             return self._locked_turn(
                 self._store.lock(session_id), session_id, message, mode, confirm,
-                images, reminder, on_step,
+                images, reminder, on_step, cancel,
             )
         finally:
             self._store.unpin(session_id)
 
     def _locked_turn(
-        self, lock, session_id, message, mode, confirm, images=None, reminder=None, on_step=None
+        self, lock, session_id, message, mode, confirm, images=None, reminder=None,
+        on_step=None, cancel=None,
     ) -> str:
         with lock:
             messages = self.history(session_id)
@@ -402,7 +404,7 @@ class KuzgunEngine:
                 rem = {"role": "system", "content": f"[Hatırlatma] {reminder}"}
                 messages.append(rem)
             try:
-                result = self._run_chat(messages, message, mode, confirm, images, on_step)
+                result = self._run_chat(messages, message, mode, confirm, images, on_step, cancel)
             except Exception:
                 del messages[checkpoint:]
                 raise
@@ -410,7 +412,8 @@ class KuzgunEngine:
                 messages.remove(rem)  # tura özgü: sonraki turlara taşınmaz
             return result
 
-    def _run_chat(self, messages, message, mode, confirm, images=None, on_step=None) -> str:
+    def _run_chat(self, messages, message, mode, confirm, images=None, on_step=None,
+                  cancel=None) -> str:
         step = on_step or (lambda *a, **k: None)
         if images:
             step("🖼️ resim betimleniyor…")
@@ -476,11 +479,14 @@ class KuzgunEngine:
                 rules=self._rules,  # C5: izin kuralları
                 on_step=step,  # canlı "ne yapıyor" bildirimi
                 max_tool_chars=self.config.max_tool_chars,  # araç çıktısı kırpma bütçesi
+                cancel=cancel,  # ESC/Ctrl+C: adımlar arasında dur
             )
-            if self.reflect and is_code:
+            # İptal edildiyse yansıtma yapma (boş yere model çağrısı olmasın).
+            if self.reflect and is_code and reply != CANCELLED:
                 step("🔧 kod doğrulanıyor…")
                 reply = self._reflect_code(messages, reply, active, mode, cb, esc)
-        if reply and not reply.startswith("Error:"):  # hataları "öğrenme"
+        # Hataları/iptali "öğrenme" (köşeli-parantez mesajları: [iptal edildi], [hata]).
+        if reply and not reply.startswith(("Error:", "[")):
             try:
                 self.memory.add(message, reply, self.embedder)
             except Exception as exc:  # noqa: BLE001

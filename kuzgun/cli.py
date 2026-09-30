@@ -255,9 +255,10 @@ def main(argv=None) -> None:
         yazılır (Claude Code gibi: ne araştırdığı, hangi komutu çalıştırdığı görünür)."""
         cevap = run_guarded(
             engine.chat, user, mode=state["mode"], images=images or None,
-            on_step=_on_step,
+            on_step=_on_step, cancel=cancel.is_set,  # ESC/Ctrl+C adımlar arasında durdurur
         )
         if cancel.is_set():
+            ui.print_note(console, "⨯ iptal edildi", style="yellow")
             return
         ui.print_reply(console, cevap)
 

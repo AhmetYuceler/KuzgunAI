@@ -257,18 +257,29 @@ def make_session(state: dict, commands=None, arg_choices=None, needs_arg=None, *
         state["attachments"].append(path)
         event.current_buffer.insert_text(f"[resim {len(state['attachments'])}] ")
 
-    @kb.add("c-c")
-    def _(event):
+    def _cancel_running() -> bool:
+        """Çalışan iş varsa iptal bayrağını kaldırır (adımlar arasında durur). True döner."""
         if state.get("busy"):
             cancel = state.get("cancel")
             if cancel is not None:
                 cancel.set()
             state["busy"] = "İptal ediliyor…"
+            return True
+        return False
+
+    @kb.add("c-c")
+    def _(event):
+        if _cancel_running():
             return
         if event.current_buffer.text:
             event.current_buffer.reset()
             return
         event.app.exit(exception=KeyboardInterrupt())
+
+    @kb.add("escape")  # ESC: Claude gibi çalışan işi iptal et; boştaysa satırı temizle
+    def _(event):
+        if not _cancel_running():
+            event.current_buffer.reset()
 
     def toolbar():
         mode = state["mode"]

@@ -101,6 +101,9 @@ def _result_summary(result, seconds: float | None = None) -> str:
 # B6: araç çıktısı bağlamı doldurmasın; bundan uzunsa kırpılıp geçmişe öyle girer.
 MAX_TOOL_CHARS = 4000
 
+# Kullanıcı ESC/Ctrl+C ile turu iptal edince dönen metin (öğrenmeye/yansıtmaya girmez).
+CANCELLED = "[iptal edildi]"
+
 
 def _clip(text: str, limit: int = MAX_TOOL_CHARS) -> str:
     """Uzun araç çıktısını baş+son koruyarak kırpar (7B'nin küçük bağlamı için)."""
@@ -311,6 +314,7 @@ def run_turn(
     rules=(),
     on_step=None,
     max_tool_chars: int = MAX_TOOL_CHARS,
+    cancel=None,
 ) -> str:
     """Ajan döngüsü. `escalate` verilirse model döngüye girer / araçlar üst üste hata
     verir / max_steps aşılırsa uzmana (Claude) devreder. `wrapup=True` ise max_steps
@@ -345,6 +349,11 @@ def run_turn(
     repeat = 0
     err_streak = 0
     for step in range(max_steps):
+        # ESC/Ctrl+C: her adımın başında iptal kontrolü → tüm bütçe bitene kadar
+        # beklemeden, çalışan tur adımlar arasında durur.
+        if cancel is not None and cancel():
+            log.info("tur iptal edildi id=%s adım=%s", turn_id, step)
+            return CANCELLED
         step_cb("düşünüyor…" if step == 0 else f"devam ediyor (adım {step + 1})…")
         with timed(log, "model", id=turn_id, step=step):
             assistant = client.chat(messages, registry.schemas())
