@@ -346,3 +346,16 @@ def test_pseudo_call_ignores_code_blocks_and_prose():
     assert extract_tool_calls_from_text("```python\nprint(x)\n```") == []
     assert extract_tool_calls_from_text("topla(a, b) fonksiyonu iki sayıyı toplar") == []
     assert extract_tool_calls_from_text("Sonuç: f(x)=3") == []
+
+
+def test_on_step_reports_tool_activity():
+    # Canlı durum: run_turn araç çalıştırırken on_step'e Türkçe eylem bildirir.
+    reg = _registry_with_echo()
+    client = FakeModelClient([
+        AssistantMessage(text=None, tool_calls=[ToolCall("1", "echo", {"text": "x"})]),
+        AssistantMessage(text="bitti", tool_calls=[]),
+    ])
+    steps = []
+    run_turn(client, [{"role": "user", "content": "?"}], reg, on_step=steps.append)
+    assert any("düşün" in s.lower() for s in steps)      # model düşünüyor
+    assert any("echo" in s.lower() or "çalıştır" in s.lower() for s in steps)  # araç

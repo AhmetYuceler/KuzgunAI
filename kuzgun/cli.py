@@ -233,8 +233,12 @@ def main(argv=None) -> None:
         ui.print_note(console, resume_session(engine, archive, key, state))
 
     def _sor(user: str, images: list[str], cancel) -> None:
-        """Bir kullanıcı mesajını modele iletir; iptal edilmediyse cevabı basar."""
-        cevap = run_guarded(engine.chat, user, mode=state["mode"], images=images or None)
+        """Bir kullanıcı mesajını modele iletir; iptal edilmediyse cevabı basar.
+        on_step ile alt durum barı canlı 'ne yapıyor' gösterir (Claude Code gibi)."""
+        cevap = run_guarded(
+            engine.chat, user, mode=state["mode"], images=images or None,
+            on_step=lambda m: state.__setitem__("busy", m),
+        )
         if cancel.is_set():
             return
         ui.print_reply(console, cevap)

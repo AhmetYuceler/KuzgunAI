@@ -12,6 +12,28 @@ from kuzgun.tools import ToolRegistry, ToolResult
 
 log = get_logger("agent")
 
+# Kullanıcıya "ne yapıyor" göstermek için araç → Türkçe eylem etiketi (canlı durum barı).
+_TOOL_LABELS = {
+    "web_search": "🔍 internette araştırıyor",
+    "fetch_url": "🌐 web sayfası okunuyor",
+    "read_file": "📄 dosya okuyor",
+    "write_file": "✍️ dosya yazıyor",
+    "run_command": "⚙️ komut çalıştırıyor",
+    "glob_search": "🔎 dosyalar aranıyor",
+    "grep_search": "🔎 içerikte aranıyor",
+    "ask_expert": "🧠 uzmana (Claude) danışıyor",
+    "remember": "📝 not alıyor",
+    "media_control": "🎵 medya kontrol",
+    "weather": "🌤️ hava durumu alınıyor",
+    "web_recon": "🌐 site inceleniyor (keşif)",
+    "security_scan": "🛡️ zafiyet taranıyor",
+}
+
+
+def _tool_label(name: str) -> str:
+    return _TOOL_LABELS.get(name, f"⚙️ {name} çalıştırıyor") + "…"
+
+
 # B6: araç çıktısı bağlamı doldurmasın; bundan uzunsa kırpılıp geçmişe öyle girer.
 MAX_TOOL_CHARS = 4000
 
@@ -174,6 +196,7 @@ def run_turn(
     wrapup: bool = False,
     out_dir: str | None = None,
     rules=(),
+    on_step=None,
 ) -> str:
     """Ajan döngüsü. `escalate` verilirse model döngüye girer / araçlar üst üste hata
     verir / max_steps aşılırsa uzmana (Claude) devreder. `wrapup=True` ise max_steps
@@ -181,6 +204,7 @@ def run_turn(
     turu istenir (C2: bütçe bitince zarif kapanış, yarım kalma yerine kısmi cevap)."""
     def _escalate_and_record() -> str:
         # A3 (bug #5): devredilen cevabı geçmişe de yaz ki sonraki turda kaybolmasın.
+        (on_step or (lambda m: None))("🧠 uzmana (Claude) danışıyor…")
         reply = escalate(_last_user_text(messages))
         messages.append({"role": "assistant", "content": reply})
         return reply
@@ -200,12 +224,14 @@ def run_turn(
         log.info("bütçe doldu → zarif kapanış id=%s", turn_id)
         return text
 
+    step_cb = on_step or (lambda m: None)
     turn_id = uuid.uuid4().hex[:8]
     log.info("tur başladı id=%s mode=%s", turn_id, mode)
     last_sig = None
     repeat = 0
     err_streak = 0
     for step in range(max_steps):
+        step_cb("düşünüyor…" if step == 0 else f"devam ediyor (adım {step + 1})…")
         with timed(log, "model", id=turn_id, step=step):
             assistant = client.chat(messages, registry.schemas())
         # Model tool call'u metin-JSON olarak verdiyse gerçek çağrıya çevir.
@@ -227,6 +253,7 @@ def run_turn(
         last_sig = sig
         step_error = False
         for tc in assistant.tool_calls:
+            step_cb(_tool_label(tc.name))  # kullanıcıya canlı "ne yapıyor" göster
             mutating = registry.is_mutating(tc.name)
             allowed, reason = is_allowed(tc.name, tc.arguments, mutating, mode, confirm, rules=rules)
             if allowed:

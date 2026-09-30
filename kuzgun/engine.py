@@ -370,24 +370,26 @@ class KuzgunEngine:
         session_id: str | None = None,
         images: list[str] | None = None,
         reminder: str | None = None,
+        on_step=None,
     ) -> str:
         # A4 (bug #10): tur boyunca oturum kilidini tut → aynı oturuma eşzamanlı
         # istekler geçmişi bozmaz. Ayrıca oturumu pinle ki başka bir oturumun
         # eviction'ı bu turu ortada atıp kilidini yok etmesin (reviewer #1).
         if session_id is None:
             return self._locked_turn(
-                self._default_lock, None, message, mode, confirm, images, reminder
+                self._default_lock, None, message, mode, confirm, images, reminder, on_step
             )
         self._store.pin(session_id)
         try:
             return self._locked_turn(
-                self._store.lock(session_id), session_id, message, mode, confirm, images, reminder
+                self._store.lock(session_id), session_id, message, mode, confirm,
+                images, reminder, on_step,
             )
         finally:
             self._store.unpin(session_id)
 
     def _locked_turn(
-        self, lock, session_id, message, mode, confirm, images=None, reminder=None
+        self, lock, session_id, message, mode, confirm, images=None, reminder=None, on_step=None
     ) -> str:
         with lock:
             messages = self.history(session_id)
@@ -400,7 +402,7 @@ class KuzgunEngine:
                 rem = {"role": "system", "content": f"[Hatırlatma] {reminder}"}
                 messages.append(rem)
             try:
-                result = self._run_chat(messages, message, mode, confirm, images)
+                result = self._run_chat(messages, message, mode, confirm, images, on_step)
             except Exception:
                 del messages[checkpoint:]
                 raise
@@ -408,8 +410,10 @@ class KuzgunEngine:
                 messages.remove(rem)  # tura özgü: sonraki turlara taşınmaz
             return result
 
-    def _run_chat(self, messages, message, mode, confirm, images=None) -> str:
+    def _run_chat(self, messages, message, mode, confirm, images=None, on_step=None) -> str:
+        step = on_step or (lambda m: None)
         if images:
+            step("🖼️ resim betimleniyor…")
             cb = confirm if confirm is not None else self.confirm
             esc = self._escalate if self._escalate is not None else self._do_escalate
             reply = self._chat_with_images(messages, message, images, mode, cb, esc)
@@ -425,12 +429,14 @@ class KuzgunEngine:
         # Deterministik niyet kısayolu: net medya komutlarını modele bırakma.
         media_action = detect_media_intent(message)
         if media_action:
+            step("🎵 medya kontrol ediliyor…")
             reply = media_control(media_action)
             messages.append({"role": "user", "content": message})
             messages.append({"role": "assistant", "content": reply})
             self._trim(messages)
             return reply
         if detect_weather_intent(message):
+            step("🌤️ hava durumu alınıyor…")
             reply = weather()  # konumdan otomatik hava durumu
             if not is_compound(message):  # yalnız hava soruldu → model gereksiz
                 messages.append({"role": "user", "content": message})
@@ -447,6 +453,7 @@ class KuzgunEngine:
         routed = self.autoroute and classify_complexity(message)[0] == "zor"
         if not routed:
             try:
+                step("📚 hafıza taranıyor…")
                 inject_memory(
                     messages, self.memory, self.embedder, message,
                     min_score=self.config.memory_min_score,
@@ -455,6 +462,7 @@ class KuzgunEngine:
                 log.warning("hafıza geçmişi çağrılamadı: %s", exc)
         messages.append({"role": "user", "content": message})
         if routed:
+            step("🧠 uzmana (Claude) devrediyor…")
             reply = esc(message)
             messages.append({"role": "assistant", "content": reply})
         else:
@@ -466,8 +474,10 @@ class KuzgunEngine:
                 max_steps=self.config.max_steps, wrapup=True,  # C2: bütçe bitince zarif kapanış
                 out_dir=self.config.out_dir,  # C3: büyük çıktı dosyaya
                 rules=self._rules,  # C5: izin kuralları
+                on_step=step,  # canlı "ne yapıyor" bildirimi
             )
             if self.reflect and is_code:
+                step("🔧 kod doğrulanıyor…")
                 reply = self._reflect_code(messages, reply, active, mode, cb, esc)
         if reply and not reply.startswith("Error:"):  # hataları "öğrenme"
             try:
