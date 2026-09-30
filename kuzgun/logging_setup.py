@@ -23,9 +23,15 @@ def get_logger(name: str | None = None) -> logging.Logger:
     return logging.getLogger(_ROOT if not name else f"{_ROOT}.{name}")
 
 
-def setup_logging(level: str | int = "INFO", log_file: str | None = None) -> None:
+def setup_logging(
+    level: str | int = "INFO", log_file: str | None = None, console: bool = True
+) -> None:
     """Kök `kuzgun` logger'ını yapılandırır. Idempotent: ikinci çağrı handler
-    çoğaltmaz (sadece seviyeyi günceller)."""
+    çoğaltmaz (sadece seviyeyi günceller).
+
+    `console=False`: ekrana (stderr) yazma; yalnız dosyaya yaz. Etkileşimli TUI'de
+    stderr'e INFO akıtmak sabit kutuyu bozar — o yüzden TUI dosyaya yazar, ekranda
+    zaten canlı adım günlüğü var. Hiç handler kalmasın diye NullHandler eklenir."""
     global _configured
     root = logging.getLogger(_ROOT)
     lvl = logging.getLevelName(level) if isinstance(level, str) else level
@@ -35,15 +41,18 @@ def setup_logging(level: str | int = "INFO", log_file: str | None = None) -> Non
             h.setLevel(lvl)
         return
     fmt = logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s", "%H:%M:%S")
-    ch = logging.StreamHandler(sys.stderr)
-    ch.setFormatter(fmt)
-    ch.setLevel(lvl)
-    root.addHandler(ch)
+    if console:
+        ch = logging.StreamHandler(sys.stderr)
+        ch.setFormatter(fmt)
+        ch.setLevel(lvl)
+        root.addHandler(ch)
     if log_file:
         fh = logging.FileHandler(log_file, encoding="utf-8")
         fh.setFormatter(fmt)
         fh.setLevel(lvl)
         root.addHandler(fh)
+    if not root.handlers:
+        root.addHandler(logging.NullHandler())  # propagate=False + handler yok → uyarı basmasın
     root.propagate = False
     _configured = True
 

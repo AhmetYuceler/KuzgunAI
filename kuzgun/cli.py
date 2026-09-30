@@ -181,13 +181,24 @@ def main(argv=None) -> None:
     from kuzgun import ui, vision
     from kuzgun.analyze import load_project_notes
     from kuzgun.archive import SessionArchive
+    from kuzgun.config import load_config
+    from kuzgun.logging_setup import get_logger, setup_logging
 
     args = _parse_args(argv)
     console = Console()
+    # Kalıcı iz: her tur/araç/sonuç/cevap log dosyasına yazılır (geliştirme döngüsü:
+    # kullanıcı çalıştırır, biz logu okuyup hataları teşhis eder/düzeltiriz).
+    # console=False: TUI'yi bozmasın; ekranda zaten canlı adım günlüğü var.
+    cfg = load_config()
+    _logdir = os.path.dirname(cfg.log_file) if cfg.log_file else ""
+    if _logdir:
+        os.makedirs(_logdir, exist_ok=True)
+    setup_logging(cfg.log_level, cfg.log_file or None, console=False)
+    get_logger("cli").info("=== Kuzgun başladı · model=%s · mod=%s ===", cfg.model, cfg.mode)
     # Çalışma klasöründeki KUZGUN.md (/init çıktısı) her oturumda bağlama girer.
     proje_notu = load_project_notes(os.getcwd())
     extra = f"{_PROJECT_HEADER} {os.getcwd()}\\KUZGUN.md]\n{proje_notu}" if proje_notu else None
-    engine = KuzgunEngine(confirm=_confirm, extra_context=extra)
+    engine = KuzgunEngine(config=cfg, confirm=_confirm, extra_context=extra)
     # /resume arşivi: her turdan sonra konuşma diske yazılır; eskiler süpürülür.
     archive = SessionArchive(engine.config.sessions_dir)
     archive.sweep(engine.config.session_days)

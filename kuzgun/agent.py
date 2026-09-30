@@ -347,6 +347,7 @@ def run_turn(
     step_cb = on_step or (lambda *a, **k: None)
     turn_id = uuid.uuid4().hex[:8]
     log.info("tur başladı id=%s mode=%s", turn_id, mode)
+    log.info("[%s] kullanıcı: %s", turn_id, _oneline(_last_user_text(messages), 200))
     last_sig = None
     repeat = 0
     err_streak = 0
@@ -364,10 +365,15 @@ def run_turn(
             recovered = extract_tool_calls_from_text(assistant.text)
             # Yalnız KAYITLI bir aracı gösteriyorsa çağrı say; değilse cevap JSON'dur.
             if recovered and all(registry.has(tc.name) for tc in recovered):
+                log.info("[%s] araç metinden kurtarıldı: %s", turn_id, [t.name for t in recovered])
                 assistant.tool_calls = recovered
                 assistant.text = None
+            elif assistant.text and ("<tool_call>" in assistant.text or "<function=" in assistant.text):
+                # Model araç ÇAĞIRMAK istedi ama biçimi tanınmadı → logla (biçim kayması teşhisi).
+                log.warning("[%s] tanınmayan araç-metni: %s", turn_id, _oneline(assistant.text, 240))
         messages.append(_assistant_to_history(assistant))
         if not assistant.tool_calls:
+            log.info("[%s] cevap: %s", turn_id, _oneline(assistant.text or "", 200))
             return assistant.text or ""
         # Döngü tespiti: aynı araç çağrısı imzası art arda tekrar ediyor mu?
         sig = tuple(
@@ -393,6 +399,12 @@ def run_turn(
                 result = ToolResult(reason, ok=True)
                 step_cb("⛔ " + _oneline(reason), kind="result")
                 log.info("araç engellendi id=%s name=%s mode=%s", turn_id, tc.name, mode)
+            # Kalıcı iz (log dosyası): araç + argüman + sonuç — teşhis için.
+            log.info(
+                "[%s] araç %s args=%s -> %s", turn_id, tc.name,
+                _oneline(json.dumps(tc.arguments, ensure_ascii=False), 200),
+                _oneline(_result_summary(result), 200),
+            )
             if not result.ok:
                 step_error = True
                 log.warning("araç hatası id=%s name=%s: %s", turn_id, tc.name, result[:200])

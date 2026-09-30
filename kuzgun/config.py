@@ -62,6 +62,11 @@ class Config:
     # Güvenlik: aktif tarama (security_scan) yalnız bu domain(ler)de (virgülle). Boş
     # = aktif tarama reddedilir (yetkisiz/kandırılmış hedefi engeller).
     scan_allowlist: str = ""
+    # Kalıcı iz: her tur/araç çağrısı/sonuç/cevap bu dosyaya yazılır (KUZGUN_HOME
+    # altında). Geliştirirken 'Kuzgun ne yaptı, nerede hata etti' buradan okunur.
+    # Boş = dosyaya yazma (yalnız stderr).
+    log_file: str = "data/logs/kuzgun.log"
+    log_level: str = "INFO"  # ayrıntı için DEBUG
 
 
 def _float_env(name: str, default: float) -> float:
@@ -134,4 +139,6 @@ def load_config() -> Config:
         permission_rules=os.environ.get("KUZGUN_PERMISSION_RULES", d.permission_rules),
         compaction=os.environ.get("KUZGUN_COMPACTION", "0") not in ("0", "false", "False"),
         scan_allowlist=os.environ.get("KUZGUN_SCAN_ALLOWLIST", d.scan_allowlist),
+        log_file=_resolve(os.environ.get("KUZGUN_LOG_FILE", d.log_file), home),
+        log_level=os.environ.get("KUZGUN_LOG_LEVEL", d.log_level),
     )
