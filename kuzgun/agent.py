@@ -164,14 +164,63 @@ def _first_json_object(text: str) -> str | None:
     return None
 
 
-def extract_tool_calls_from_text(text: str | None) -> list[ToolCall]:
-    """Model, araç çağrısını gerçek çağrı yerine metin-JSON olarak verirse yakalar.
+def _coerce(v: str):
+    """XML/metin argüman değerini uygun türe çevirir (sayı/bool, yoksa dize)."""
+    if re.fullmatch(r"-?\d+", v):
+        return int(v)
+    if re.fullmatch(r"-?\d+\.\d+", v):
+        return float(v)
+    if v in ("true", "True"):
+        return True
+    if v in ("false", "False"):
+        return False
+    return v
 
-    Örn: '```json {"name":"write_file","arguments":{...}}```' → ToolCall.
-    Küçük modellerin sık yaptığı format hatasını telafi eder.
+
+_XML_FUNC_RE = re.compile(r"<function=([a-zA-Z_]\w*)>")
+_XML_PARAM_RE = re.compile(
+    r"<parameter=([a-zA-Z_]\w*)>\s*(.*?)\s*"
+    r"(?=<parameter=|</parameter>|</function>|</tool_call>|<function=|$)",
+    re.DOTALL,
+)
+
+
+def _xml_tool_calls(text: str | None) -> list[ToolCall]:
+    """Qwen3-Coder'ın XML araç-çağrısı biçimini metinden kurtarır:
+
+        <tool_call><function=read_file>
+        <parameter=path> /a/b.py </parameter>
+        <parameter=max_bytes> 100000 </parameter>
+        </function></tool_call>
+
+    Ollama şablonu bunu gerçek tool_call'a çeviremediğinde model cevabı içinde
+    METİN olarak sızar; ayrıştırmazsak Kuzgun bunu 'cevap' sanıp turu bitirir.
+    Kapanış etiketleri eksik olsa da (model sık atlar) tolere eder. Her <function=>
+    bloğunu ve onu izleyen <parameter=> çiftlerini toplar."""
+    if not text or "<function=" not in text:
+        return []
+    calls: list[ToolCall] = []
+    funcs = list(_XML_FUNC_RE.finditer(text))
+    for i, fm in enumerate(funcs):
+        name = fm.group(1)
+        start = fm.end()
+        end = funcs[i + 1].start() if i + 1 < len(funcs) else len(text)
+        block = text[start:end]
+        args = {pm.group(1): _coerce(pm.group(2).strip()) for pm in _XML_PARAM_RE.finditer(block)}
+        calls.append(ToolCall(id=f"xml-{i + 1}", name=name, arguments=args))
+    return calls
+
+
+def extract_tool_calls_from_text(text: str | None) -> list[ToolCall]:
+    """Model, araç çağrısını gerçek çağrı yerine METİN olarak verirse yakalar:
+    Qwen3-Coder XML biçimi, JSON nesnesi ya da `func(arg=...)` sözde-çağrısı.
+    Küçük/kod modellerinin sık yaptığı format hatasını telafi eder.
     """
     if not text:
         return []
+    xml = _xml_tool_calls(text)  # Qwen3-Coder XML biçimi önce
+    if xml:
+        return xml
     blob = _first_json_object(text)
     if not blob:
         return _pseudo_call(text)
@@ -261,6 +310,7 @@ def run_turn(
     out_dir: str | None = None,
     rules=(),
     on_step=None,
+    max_tool_chars: int = MAX_TOOL_CHARS,
 ) -> str:
     """Ajan döngüsü. `escalate` verilirse model döngüye girer / araçlar üst üste hata
     verir / max_steps aşılırsa uzmana (Claude) devreder. `wrapup=True` ise max_steps
@@ -337,12 +387,25 @@ def run_turn(
                 log.warning("araç hatası id=%s name=%s: %s", turn_id, tc.name, result[:200])
             messages.append(
                 {"role": "tool", "tool_call_id": tc.id,
-                 "content": _render_result(str(result), out_dir)}
+                 "content": _render_result(str(result), out_dir, max_tool_chars)}
             )
         err_streak = err_streak + 1 if step_error else 0
-        # Devir tetikleyicileri: döngü ya da üst üste araç hatası.
-        if escalate is not None and (repeat >= 2 or err_streak >= 2):
-            return _escalate_and_record()
+        # Döngü ya da üst üste araç hatası: varsa uzmana devret; yoksa modele
+        # döngüde olduğunu söyleyip kır (aynı dosyayı 5 kez okuma vakası).
+        if repeat >= 2 or err_streak >= 2:
+            if escalate is not None:
+                return _escalate_and_record()
+            messages.append({
+                "role": "system",
+                "content": (
+                    "Aynı aracı aynı argümanlarla tekrar tekrar çağırıyorsun ve sonucu "
+                    "zaten aldın. Bir daha AYNI çağrıyı yapma; ya farklı bir adım at ya da "
+                    "eldeki bilgiyle kullanıcıya cevabı ver."
+                ),
+            })
+            repeat = 0
+            err_streak = 0
+            last_sig = None
     # max_steps aşıldı. Öncelik: zarif kapanış (istenmişse) → devretme → hata.
     if wrapup:
         return _budget_wrapup()

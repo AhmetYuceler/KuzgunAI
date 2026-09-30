@@ -475,6 +475,7 @@ class KuzgunEngine:
                 out_dir=self.config.out_dir,  # C3: büyük çıktı dosyaya
                 rules=self._rules,  # C5: izin kuralları
                 on_step=step,  # canlı "ne yapıyor" bildirimi
+                max_tool_chars=self.config.max_tool_chars,  # araç çıktısı kırpma bütçesi
             )
             if self.reflect and is_code:
                 step("🔧 kod doğrulanıyor…")
